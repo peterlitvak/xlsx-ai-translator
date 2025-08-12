@@ -10,6 +10,7 @@ import openpyxl
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
+from pricing import MODEL_PRICING
 
 # Configure logging
 logging.basicConfig(
@@ -18,6 +19,10 @@ logging.basicConfig(
     handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
+
+# Utility to suppress info logs for CLI usage
+def suppress_info_logging():
+    logger.setLevel(logging.WARNING)
 
 # Load environment variables from .env at the start
 load_dotenv()
@@ -258,12 +263,12 @@ class XLSXTranslator:
             # Extract token usage and sum
             usage = getattr(result, "response_metadata", {}).get("token_usage")
             if usage:
-                from app import MODEL_PRICING
                 price_info = MODEL_PRICING.get(self.model_name, MODEL_PRICING.get("gpt-4o"))
                 self.actual_cost += (usage.get("prompt_tokens", 0) / 1000 * price_info["input"]) + (usage.get("completion_tokens", 0) / 1000 * price_info["output"])
                 self.actual_input_tokens += usage.get("prompt_tokens", 0)
                 self.actual_output_tokens += usage.get("completion_tokens", 0)
-            logger.info(f"Translated: '{text[:30]}...' -> '{result.content.strip()[:30]}...'")
+            if logger.isEnabledFor(logging.INFO):
+                logger.info(f"Translated: '{text[:30]}...' -> '{result.content.strip()[:30]}...'")
             return result.content.strip()
         except Exception as e:
             logger.error(f"Translation failed for: '{text[:30]}...': {e}")
