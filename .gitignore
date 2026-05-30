@@ -1,5 +1,6 @@
 .env
 .venv
 .idea
+.local/
 __pycache__/
 *.py[cod]

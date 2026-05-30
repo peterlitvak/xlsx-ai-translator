@@ -8,15 +8,15 @@ from pathlib import Path
 
 import openpyxl
 
-from app_helpers import (
+from services.translation_workflow import (
     ZIP_MIME_TYPE,
     XLSX_MIME_TYPE,
     translate_single_xlsx,
     translate_xlsx_zip,
 )
 
-PROJECT_ROOT = Path(__file__).parent
-FIXTURE_DIR = PROJECT_ROOT / "test_fixtures"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+FIXTURE_DIR = PROJECT_ROOT / "resources" / "test_fixtures"
 SAMPLE_XLSX_PATH = FIXTURE_DIR / "sample.xlsx"
 SAMPLE_ZIP_PATH = FIXTURE_DIR / "sample.zip"
 OPENAI_TEST_MODEL = os.getenv("OPENAI_TEST_MODEL", "gpt-4o-mini")

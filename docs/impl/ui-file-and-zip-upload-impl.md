@@ -2,17 +2,17 @@
 
 ## Scope
 
-Implement upload orchestration in `app.py` while reusing `XLSXTranslator` for each workbook. Avoid changing translation internals unless a defect blocks the UI workflow.
+Implement upload orchestration in `src/app/streamlit_app.py` while reusing `XLSXTranslator` for each workbook. Avoid changing translation internals unless a defect blocks the UI workflow.
 
 ## Proposed File Changes
 
-- `app.py`
+- `src/app/streamlit_app.py`
   - Add zip handling imports: `zipfile`, `pathlib.Path`, and any typing helpers needed.
   - Replace single-workbook upload logic with dispatch based on uploaded file extension.
   - Use helper functions for estimation, output naming, safe zip extraction, workbook discovery, and batch translation.
-- `app_helpers.py`
-  - Keep Streamlit-free helper functions for estimation, output naming, safe zip extraction, workbook discovery, and batch translation.
-- `test_app.py`
+- `src/services/translation_estimator.py`, `src/services/translation_workflow.py`, and `src/utils/`
+  - Keep Streamlit-free services and utilities for estimation, output naming, safe zip extraction, workbook discovery, and batch translation.
+- `tests/test_app_helpers.py`
   - Add unit tests for new pure helper functions.
   - Mock translator calls for UI batch orchestration tests.
 - `README.md`
@@ -20,7 +20,7 @@ Implement upload orchestration in `app.py` while reusing `XLSXTranslator` for ea
 
 ## Helper Functions
 
-Recommended helpers for `app_helpers.py`:
+Recommended helpers now live in `src/services/` and `src/utils/`:
 
 ```python
 def is_xlsx_filename(filename: str) -> bool:
@@ -126,8 +126,8 @@ Status key: ✅ done, 🟡 in progress, ⚪ not started, 🛑 blocked.
 
 | Milestone | Status | Work Item | Notes |
 | --- | --- | --- | --- |
-| M1 | ✅ | Document target UI behavior and output rules | Captured in `doc/plan/ui-file-and-zip-upload.md`. |
-| M2 | ✅ | Extract reusable estimation helpers | Moved workbook text extraction, token estimation, output token estimation, and cost math into `app_helpers.py`; added `test_app_helpers.py` unit and integration-style coverage; validated with Black and Pyright. |
+| M1 | ✅ | Document target UI behavior and output rules | Captured in `docs/plan/ui-file-and-zip-upload-plan.md`. |
+| M2 | ✅ | Extract reusable estimation helpers | Moved workbook text extraction, token estimation, output token estimation, and cost math into `src/services/translation_estimator.py`; added `tests/test_app_helpers.py` unit and integration-style coverage; validated with Black and Pyright. |
 | M3 | ✅ | Add single XLSX orchestration helper | Moved single-workbook temp-file translation orchestration into `translate_single_xlsx`; added fake-translator unit coverage; validated with Black, Pyright, and helper tests. |
 | M4 | ✅ | Add safe ZIP extraction and workbook discovery | Added `safe_extract_zip`, `UnsafeZipError`, `is_xlsx_filename`, and `find_xlsx_files`; covered normal extraction, traversal rejection, absolute path rejection, and workbook discovery filtering. |
 | M5 | ✅ | Add ZIP batch translation and archive creation | Preserve relative paths and suffix translated workbook names. |

@@ -11,8 +11,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any, ClassVar
 
-PROJECT_ROOT = Path(__file__).parent
-FIXTURE_DIR = PROJECT_ROOT / "test_fixtures"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+FIXTURE_DIR = PROJECT_ROOT / "resources" / "test_fixtures"
 SAMPLE_XLSX_PATH = FIXTURE_DIR / "sample.xlsx"
 SAMPLE_ZIP_PATH = FIXTURE_DIR / "sample.zip"
 SERVER_START_TIMEOUT_SECONDS = 30
@@ -57,13 +57,14 @@ class TestStreamlitUploadUIFlow(unittest.TestCase):
         cls.app_url = f"http://127.0.0.1:{port}"
         env = os.environ.copy()
         env["STREAMLIT_BROWSER_GATHER_USAGE_STATS"] = "false"
+        env["PYTHONPATH"] = str(PROJECT_ROOT / "src")
         cls.server_process = subprocess.Popen(
             [
                 sys.executable,
                 "-m",
                 "streamlit",
                 "run",
-                "app.py",
+                "src/app/streamlit_app.py",
                 "--server.headless",
                 "true",
                 "--server.port",

@@ -1,10 +1,11 @@
+"""Command-line entry point for batch XLSX workbook translation."""
+
 import argparse
+import csv
 import logging
 import os
 import sys
 import warnings
-from typing import List, Tuple
-import csv
 from datetime import datetime
 from pathlib import Path
 
@@ -12,52 +13,11 @@ warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
 from tqdm import tqdm
 
+from services.translation_estimator import estimate_xlsx_file
+from services.xlsx_translator import XLSXTranslator, suppress_info_logging
+from utils.zip_archives import find_xlsx_files
+
 MODEL_THREADS = {"gpt-4o": 11, "gpt-4o-mini": 11}
-
-from translator import XLSXTranslator, suppress_info_logging
-
-# Additional dependencies for estimation mode
-import openpyxl
-import tiktoken
-from pricing import MODEL_PRICING
-
-# Output token estimation factors by (source, target) language pair
-OUTPUT_TOKEN_FACTORS: dict[Tuple[str, str], float] = {
-    ("en", "en"): 1.0,
-    ("en", "ja"): 0.6,
-    ("en", "de"): 1.1,
-    ("en", "fr"): 1.1,
-    ("en", "zh"): 0.7,
-    ("ja", "en"): 1.7,
-    ("ja", "ja"): 1.0,
-    ("de", "en"): 0.9,
-    ("fr", "en"): 0.9,
-}
-
-
-def find_xlsx_files(source_path: str) -> List[str]:
-    """Find supported workbook files from a single XLSX file or directory tree."""
-    source = Path(source_path)
-    if source.is_file():
-        return [str(source)] if is_xlsx_filename(source.name) else []
-
-    if not source.is_dir():
-        return []
-
-    xlsx_files: List[str] = []
-    for dirpath, _, filenames in os.walk(source):
-        for filename in filenames:
-            if is_xlsx_filename(filename):
-                xlsx_files.append(os.path.join(dirpath, filename))
-    return sorted(xlsx_files)
-
-
-def is_xlsx_filename(filename: str) -> bool:
-    """Return true when filename is a supported workbook name."""
-    base_name = os.path.basename(filename)
-    if base_name.startswith(("~$", "._")):
-        return False
-    return base_name.lower().endswith(".xlsx")
 
 
 def get_report_root(source_path: str) -> str:
@@ -69,43 +29,12 @@ def get_report_root(source_path: str) -> str:
 
 
 def ensure_target_subdir(src_file: str, target_lang: str) -> str:
-    """Create a subdirectory named after the target language alongside the source file, and append the language code to the filename."""
+    """Return an output workbook path in a target-language sibling directory."""
     src_dir = os.path.dirname(src_file)
     target_dir = os.path.join(src_dir, target_lang)
     os.makedirs(target_dir, exist_ok=True)
     base, ext = os.path.splitext(os.path.basename(src_file))
     return os.path.join(target_dir, f"{base}_{target_lang}{ext}")
-
-
-def estimate_cost(
-    file_path: str, source_lang: str, target_lang: str, model_name: str
-) -> Tuple[int, int, float]:
-    """Estimate input/output tokens and cost for translating a single XLSX file."""
-    wb = openpyxl.load_workbook(file_path)
-    texts: List[str] = []
-    sheets = [
-        s for s in wb.worksheets if getattr(s, "sheet_state", "visible") == "visible"
-    ]
-    for sheet in sheets:
-        for row in sheet.iter_rows():
-            for cell in row:
-                if cell.value and isinstance(cell.value, str):
-                    val = cell.value.strip()
-                    if val and any(char.isalnum() for char in val):
-                        texts.append(val)
-    try:
-        enc = tiktoken.encoding_for_model(model_name)
-        total_input_tokens = sum(len(enc.encode(str(t))) for t in texts)
-    except Exception:
-        total_input_tokens = sum(len(str(t).split()) for t in texts)
-
-    factor: float = OUTPUT_TOKEN_FACTORS.get((source_lang, target_lang), 1.0)
-    est_output_tokens = int(total_input_tokens * factor)
-    price = MODEL_PRICING.get(model_name, MODEL_PRICING["gpt-4o"])
-    cost = (total_input_tokens / 1000 * price["input"]) + (
-        est_output_tokens / 1000 * price["output"]
-    )
-    return total_input_tokens, est_output_tokens, cost
 
 
 def main() -> None:
@@ -148,7 +77,7 @@ def main() -> None:
     estimate_only: bool = args.estimate
 
     report_root = get_report_root(source_path)
-    xlsx_files: List[str] = find_xlsx_files(source_path)
+    xlsx_files: list[str] = find_xlsx_files(source_path)
     if not xlsx_files:
         print(f"No .xlsx files found in {source_path}")
         sys.exit(1)
@@ -171,7 +100,7 @@ def main() -> None:
             writer = csv.writer(csvfile)
             writer.writerow(["file", "input_tokens", "output_tokens", "cost_usd"])
             for src_file in tqdm(xlsx_files, desc="Estimating", unit="file"):
-                in_tok, out_tok, cost = estimate_cost(
+                in_tok, out_tok, cost = estimate_xlsx_file(
                     src_file, source_lang, target_lang, model_name
                 )
                 grand_in += in_tok
@@ -207,9 +136,7 @@ def main() -> None:
         writer_act = csv.writer(csvfile)
         writer_act.writerow(["file", "input_tokens", "output_tokens", "cost_usd"])
 
-        for file_idx, src_file in enumerate(
-            tqdm(xlsx_files, desc="Files", unit="file")
-        ):
+        for src_file in tqdm(xlsx_files, desc="Files", unit="file"):
             out_file: str = ensure_target_subdir(src_file, target_lang)
             try:
                 # Select model and threads

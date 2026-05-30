@@ -6,13 +6,13 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import os
 from pathlib import Path
 
 import openpyxl
 
-PROJECT_ROOT = Path(__file__).parent
-CLI_SCRIPT = PROJECT_ROOT / "cli_translate.py"
-FIXTURE_DIR = PROJECT_ROOT / "test_fixtures"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+FIXTURE_DIR = PROJECT_ROOT / "resources" / "test_fixtures"
 SAMPLE_XLSX_PATH = FIXTURE_DIR / "sample.xlsx"
 OPENAI_TEST_MODEL = "gpt-4o-mini"
 
@@ -21,12 +21,15 @@ class TestCLITranslateIntegration(unittest.TestCase):
     """Validate CLI behavior for both single-file and directory sources."""
 
     def run_cli(self, args: list[str]) -> subprocess.CompletedProcess[str]:
-        """Run the CLI script with the current Python interpreter."""
+        """Run the CLI module with the current Python interpreter."""
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(PROJECT_ROOT / "src")
         return subprocess.run(
-            [sys.executable, str(CLI_SCRIPT), *args],
+            [sys.executable, "-m", "cli.translate", *args],
             capture_output=True,
             text=True,
             cwd=PROJECT_ROOT,
+            env=env,
             check=False,
         )
 

@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
+"""Copy files matching a glob pattern while preserving relative paths."""
+
 import argparse
 import shutil
 from pathlib import Path
 
 
-def copy_matching(source_dir, target_dir, pattern):
-    source_dir = Path(source_dir).resolve()
-    target_dir = Path(target_dir).resolve()
-    # Use rglob with the pattern for standard glob matching
-    for path in source_dir.rglob(pattern):
-        rel_path = path.relative_to(source_dir)
-        dest_path = target_dir / rel_path
+def copy_matching(source_dir: str, target_dir: str, pattern: str) -> None:
+    """Copy matching files or directories from source_dir to target_dir."""
+    source_path = Path(source_dir).resolve()
+    target_path = Path(target_dir).resolve()
+    for path in source_path.rglob(pattern):
+        rel_path = path.relative_to(source_path)
+        dest_path = target_path / rel_path
         if path.is_dir():
             dest_path.mkdir(parents=True, exist_ok=True)
         else:
@@ -18,7 +20,8 @@ def copy_matching(source_dir, target_dir, pattern):
             shutil.copy2(path, dest_path)
 
 
-def main():
+def main() -> None:
+    """Run the copy-pattern command-line interface."""
     parser = argparse.ArgumentParser(
         description="Copy files and directories matching a pattern, preserving structure."
     )

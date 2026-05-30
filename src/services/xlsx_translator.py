@@ -1,3 +1,5 @@
+"""OpenAI-backed XLSX workbook translation service."""
+
 import logging
 import os
 import re
@@ -10,7 +12,7 @@ import openpyxl
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, SecretStr
-from pricing import MODEL_PRICING
+from services.model_pricing import MODEL_PRICING
 
 # Configure logging
 logging.basicConfig(

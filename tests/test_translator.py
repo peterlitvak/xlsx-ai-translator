@@ -1,13 +1,15 @@
 import unittest
 import os
 import tempfile
+from pathlib import Path
 
 import openpyxl
 
-from translator import XLSXTranslator
+from services.xlsx_translator import XLSXTranslator
 
 test_input = "test_input.xlsx"
 test_output = "test_output.xlsx"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 OPENAI_TEST_MODEL = os.getenv("OPENAI_TEST_MODEL", "gpt-4o-mini")
 
 
@@ -135,14 +137,14 @@ class TestTranslator(unittest.TestCase):
         os.remove(temp_output.name)
 
     def test_japanese_sample_file_formula_integrity(self):
-        # This test assumes test.xlsx exists in the project directory and contains formulas and Japanese text
+        # This test uses a committed workbook fixture with formulas and Japanese text.
         import tempfile
 
-        src = os.path.join(os.path.dirname(__file__), "test.xlsx")
+        src = PROJECT_ROOT / "resources" / "test_fixtures" / "test.xlsx"
         temp_output = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
         # Translate to English (or any language)
         translator = XLSXTranslator(
-            src,
+            str(src),
             target_language="en",
             model_name=OPENAI_TEST_MODEL,
             max_workers=1,

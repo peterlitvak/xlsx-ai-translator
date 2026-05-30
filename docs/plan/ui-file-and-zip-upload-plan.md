@@ -11,9 +11,9 @@ The underlying workbook translation behavior should continue to use the existing
 
 ## Current State
 
-- `app.py` accepts one `.xlsx` upload only.
+- `src/app/streamlit_app.py` accepts `.xlsx` and `.zip` uploads.
 - `XLSXTranslator` translates one workbook at a time.
-- `cli_translate.py` already demonstrates multi-file translation by discovering `.xlsx` files under a directory and translating each one.
+- `src/cli/translate.py` demonstrates multi-file translation by discovering `.xlsx` files under a directory and translating each one.
 - Token and cost estimation in the UI currently reads the uploaded workbook directly and estimates usage for that one workbook.
 
 ## Target User Flow

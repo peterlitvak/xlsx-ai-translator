@@ -9,24 +9,30 @@ from typing import ClassVar, Iterable, Optional
 
 import openpyxl
 
-from app_helpers import (
-    UnsafeZipError,
-    XLSX_MIME_TYPE,
-    ZIP_MIME_TYPE,
-    TranslationError,
-    ZipTranslationProgress,
+from services.translation_estimator import (
     estimate_output_tokens,
     estimate_translation_costs,
     estimate_xlsx_file,
     extract_translatable_texts,
-    find_xlsx_files,
-    is_zip_filename,
-    is_xlsx_filename,
-    safe_extract_zip,
+)
+from services.translation_workflow import (
+    TranslationError,
+    ZipTranslationProgress,
     translate_single_xlsx,
     translate_xlsx_zip,
+    XLSX_MIME_TYPE,
+    ZIP_MIME_TYPE,
+)
+from utils.file_names import (
+    is_zip_filename,
+    is_xlsx_filename,
     translated_zip_name,
     translated_xlsx_name,
+)
+from utils.zip_archives import (
+    UnsafeZipError,
+    find_xlsx_files,
+    safe_extract_zip,
 )
 
 

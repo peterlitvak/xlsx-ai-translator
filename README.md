@@ -16,7 +16,7 @@ archive containing workbooks.
 ## Usage Example
 
 ```python
-from translator import translate_xlsx_file
+from services.xlsx_translator import translate_xlsx_file
 
 translate_xlsx_file("input.xlsx", "output.xlsx", target_language="fr")
 ```
@@ -63,16 +63,16 @@ translation runs write translated workbooks into a target-language subdirectory 
 
 ```bash
 # Translate one workbook
-(.venv) $ python cli_translate.py --root ./test_fixtures/sample.xlsx --source ja --target en --model gpt-4o
+(.venv) $ PYTHONPATH=src python -m cli.translate --root ./resources/test_fixtures/sample.xlsx --source ja --target en --model gpt-4o
 
 # Translate every workbook under a directory
-(.venv) $ python cli_translate.py --root ./my_spreadsheets --source ja --target en --model gpt-4o
+(.venv) $ PYTHONPATH=src python -m cli.translate --root ./my_spreadsheets --source ja --target en --model gpt-4o
 ```
 
 Dry run token and cost estimation:
 
 ```bash
-(.venv) $ python cli_translate.py --root ./my_spreadsheets --source ja --target en --estimate
+(.venv) $ PYTHONPATH=src python -m cli.translate --root ./my_spreadsheets --source ja --target en --estimate
 ```
 
 Arguments:
@@ -96,11 +96,11 @@ runs, or to the root directory for directory runs. Each report contains per-file
 Launch the Streamlit app to translate files through an interactive web interface:
 
 ```bash
-(.venv) $ streamlit run app.py
+(.venv) $ PYTHONPATH=src streamlit run src/app/streamlit_app.py
 ```
 
 Visit the URL printed in the console (typically http://localhost:8501) and upload the spreadsheet you wish to translate.
-For a local smoke test, use `test_fixtures/sample.xlsx` or `test_fixtures/sample.zip`.
+For a local smoke test, use `resources/test_fixtures/sample.xlsx` or `resources/test_fixtures/sample.zip`.
 
 The file picker accepts:
 
@@ -127,7 +127,7 @@ The integration suite uses real OpenAI calls, and the UI flow tests use Playwrig
 
 ```bash
 (.venv) $ python -m playwright install chromium
-(.venv) $ python -m unittest
+(.venv) $ PYTHONPATH=src python -m unittest discover -s tests
 (.venv) $ pyright
 ```
 

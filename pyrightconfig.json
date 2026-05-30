@@ -2,8 +2,20 @@
   "venvPath": ".",
   "venv": ".venv",
   "pythonVersion": "3.11",
+  "include": [
+    "src",
+    "tests"
+  ],
   "exclude": [
     ".venv",
     "__pycache__"
+  ],
+  "executionEnvironments": [
+    {
+      "root": ".",
+      "extraPaths": [
+        "src"
+      ]
+    }
   ]
 }
