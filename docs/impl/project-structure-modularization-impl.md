@@ -55,7 +55,7 @@ Move duplicated CLI estimation and workbook discovery logic to these same utilit
 | Current Path | Target Path | Notes |
 | --- | --- | --- |
 | `test_app_helpers.py` | `tests/test_app_helpers.py` | Update imports to new utility/service modules. |
-| `test_cli_translate.py` | `tests/test_cli_translate.py` | Update subprocess command to `python -m cli.translate`. |
+| `test_cli_translate.py` | `tests/test_cli_translate.py` | Update subprocess command to `uv run xlsx-translate`. |
 | `test_openai_integration.py` | `tests/test_openai_integration.py` | Update imports and fixture paths. |
 | `test_translator.py` | `tests/test_translator.py` | Update import to `services.xlsx_translator`. |
 | `test_ui_flow.py` | `tests/test_ui_flow.py` | Update Streamlit command to `src/app/streamlit_app.py`. |
@@ -135,14 +135,14 @@ Rules:
 
 ## Validation Commands
 
-Use the project virtual environment:
+Use the uv-managed project environment:
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m unittest discover -s tests
-PYTHONPATH=src .venv/bin/python -m cli.translate --help
-PYTHONPATH=src .venv/bin/streamlit run src/app/streamlit_app.py
-.venv/bin/python -m black src tests
-.venv/bin/pyright
+uv run python -m unittest discover -s tests
+uv run xlsx-translate --help
+uv run streamlit run src/app/streamlit_app.py
+uv run black src tests
+uv run pyright
 ```
 
 The Streamlit command is interactive. For automated validation, prefer the existing browser-backed UI flow test after its entry-point path is updated.

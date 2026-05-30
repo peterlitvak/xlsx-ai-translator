@@ -30,18 +30,16 @@ $ git clone https://github.com/your-org/xlsx-llm-translator.git
 $ cd xlsx-llm-translator
 ```
 
-### 2. Create & activate a virtual environment (recommended)
+### 2. Install uv
 
 ```bash
-$ python3 -m venv .venv
-$ source .venv/bin/activate          # on macOS / Linux
-# .venv\Scripts\activate.bat        # on Windows PowerShell/cmd
+$ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-### 3. Install dependencies
+### 3. Sync dependencies
 
 ```bash
-(.venv) $ pip install -r requirements.txt
+$ uv sync
 ```
 
 ### 4. Set your OpenAI credentials
@@ -50,7 +48,7 @@ The application relies on the OpenAI API. Make sure you have an API key, then ex
 both the CLI and UI can read it:
 
 ```bash
-(.venv) $ export OPENAI_API_KEY="sk-..."
+$ export OPENAI_API_KEY="sk-..."
 ```
 
 ---
@@ -63,16 +61,16 @@ translation runs write translated workbooks into a target-language subdirectory 
 
 ```bash
 # Translate one workbook
-(.venv) $ PYTHONPATH=src python -m cli.translate --root ./resources/test_fixtures/sample.xlsx --source ja --target en --model gpt-4o
+$ uv run xlsx-translate --root ./resources/test_fixtures/sample.xlsx --source ja --target en --model gpt-4o
 
 # Translate every workbook under a directory
-(.venv) $ PYTHONPATH=src python -m cli.translate --root ./my_spreadsheets --source ja --target en --model gpt-4o
+$ uv run xlsx-translate --root ./my_spreadsheets --source ja --target en --model gpt-4o
 ```
 
 Dry run token and cost estimation:
 
 ```bash
-(.venv) $ PYTHONPATH=src python -m cli.translate --root ./my_spreadsheets --source ja --target en --estimate
+$ uv run xlsx-translate --root ./my_spreadsheets --source ja --target en --estimate
 ```
 
 Arguments:
@@ -96,7 +94,7 @@ runs, or to the root directory for directory runs. Each report contains per-file
 Launch the Streamlit app to translate files through an interactive web interface:
 
 ```bash
-(.venv) $ PYTHONPATH=src streamlit run src/app/streamlit_app.py
+$ uv run streamlit run src/app/streamlit_app.py
 ```
 
 Visit the URL printed in the console (typically http://localhost:8501) and upload the spreadsheet you wish to translate.
@@ -126,12 +124,13 @@ any `.xlsx` workbooks.
 The integration suite uses real OpenAI calls, and the UI flow tests use Playwright with Chromium.
 
 ```bash
-(.venv) $ python -m playwright install chromium
-(.venv) $ PYTHONPATH=src python -m unittest discover -s tests
-(.venv) $ pyright
+$ uv run playwright install chromium
+$ uv run python -m unittest discover -s tests
+$ uv run pyright
 ```
 
 ## Requirements
 
 - Python 3.11+
+- uv
 - Set `OPENAI_API_KEY` in your environment

@@ -3,7 +3,6 @@
 import os
 import socket
 import subprocess
-import sys
 import tempfile
 import time
 import unittest
@@ -57,11 +56,10 @@ class TestStreamlitUploadUIFlow(unittest.TestCase):
         cls.app_url = f"http://127.0.0.1:{port}"
         env = os.environ.copy()
         env["STREAMLIT_BROWSER_GATHER_USAGE_STATS"] = "false"
-        env["PYTHONPATH"] = str(PROJECT_ROOT / "src")
         cls.server_process = subprocess.Popen(
             [
-                sys.executable,
-                "-m",
+                "uv",
+                "run",
                 "streamlit",
                 "run",
                 "src/app/streamlit_app.py",

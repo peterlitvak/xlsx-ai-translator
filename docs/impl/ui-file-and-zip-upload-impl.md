@@ -103,11 +103,11 @@ Progress text should include the current relative workbook path so failures are 
 
 Each implementation milestone should include relevant unit or integration coverage in the same change.
 
-Run Black and Pyright before finalizing each implementation milestone. Use the project virtualenv:
+Run Black and Pyright before finalizing each implementation milestone. Use the uv-managed environment:
 
 ```bash
-.venv/bin/python -m black .
-.venv/bin/pyright
+uv run black src tests
+uv run pyright
 ```
 
 Use committed sample XLSX/ZIP fixtures for integration flows. Keep `openpyxl` fixture utilities available for refreshing or creating additional samples.

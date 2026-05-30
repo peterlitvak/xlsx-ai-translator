@@ -165,11 +165,11 @@ from services.translation_estimator import estimate_xlsx_file
 Expected commands after migration:
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m cli.translate --root ./resources/test_fixtures/sample.xlsx --source ja --target en --estimate
-PYTHONPATH=src .venv/bin/streamlit run src/app/streamlit_app.py
-PYTHONPATH=src .venv/bin/python -m unittest discover -s tests
-.venv/bin/black src tests
-.venv/bin/pyright
+uv run xlsx-translate --root ./resources/test_fixtures/sample.xlsx --source ja --target en --estimate
+uv run streamlit run src/app/streamlit_app.py
+uv run python -m unittest discover -s tests
+uv run black src tests
+uv run pyright
 ```
 
 `pyrightconfig.json` should include `src` in the analysis path so imports resolve without ad hoc test configuration.

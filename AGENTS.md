@@ -34,14 +34,14 @@ The modularization work is documented in
 
 ## Common Commands
 
-Use the project virtual environment when available:
+Use the uv-managed project environment:
 
 ```bash
-.venv/bin/python -m unittest discover -s tests
-.venv/bin/black <touched-python-files>
-.venv/bin/pyright
-PYTHONPATH=src .venv/bin/python -m cli.translate --help
-PYTHONPATH=src .venv/bin/streamlit run src/app/streamlit_app.py
+uv run python -m unittest discover -s tests
+uv run black <touched-python-files>
+uv run pyright
+uv run xlsx-translate --help
+uv run streamlit run src/app/streamlit_app.py
 ```
 
 The live OpenAI and browser-backed tests require the environment described in `README.md`, including `OPENAI_API_KEY`

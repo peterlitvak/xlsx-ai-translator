@@ -1,12 +1,11 @@
 """Integration coverage for CLI source discovery and translation output."""
 
 import csv
+import os
 import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
-import os
 from pathlib import Path
 
 import openpyxl
@@ -21,11 +20,10 @@ class TestCLITranslateIntegration(unittest.TestCase):
     """Validate CLI behavior for both single-file and directory sources."""
 
     def run_cli(self, args: list[str]) -> subprocess.CompletedProcess[str]:
-        """Run the CLI module with the current Python interpreter."""
+        """Run the installed CLI through uv with the current project environment."""
         env = os.environ.copy()
-        env["PYTHONPATH"] = str(PROJECT_ROOT / "src")
         return subprocess.run(
-            [sys.executable, "-m", "cli.translate", *args],
+            ["uv", "run", "xlsx-translate", *args],
             capture_output=True,
             text=True,
             cwd=PROJECT_ROOT,

@@ -1,0 +1,39 @@
+[project]
+name = "xlsx-llm-translator"
+version = "0.1.0"
+description = "Translate XLSX workbooks with OpenAI-backed LangChain models."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "langchain-openai==1.2.2",
+    "openpyxl==3.1.5",
+    "pydantic==2.13.4",
+    "python-dotenv==1.2.2",
+    "streamlit==1.58.0",
+    "tiktoken==0.13.0",
+    "tqdm==4.67.3",
+]
+
+[project.scripts]
+xlsx-translate = "cli.translate:main"
+
+[dependency-groups]
+dev = [
+    "black==26.5.1",
+    "pip==26.1.1",
+    "playwright==1.60.0",
+    "pyright==1.1.409",
+]
+
+[build-system]
+requires = ["setuptools==82.0.1"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+target-version = ["py311"]
+
+[tool.uv]
+default-groups = ["dev"]
