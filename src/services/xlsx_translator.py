@@ -11,7 +11,8 @@ from typing import Dict, Generator, List, Optional, Tuple
 import openpyxl
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, SecretStr
+from models.translation_output import TranslationOutput
+from pydantic import SecretStr
 from services.model_pricing import MODEL_PRICING
 
 # Configure logging
@@ -31,10 +32,6 @@ def suppress_info_logging():
 # Load environment variables from .env at the start
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-
-class TranslationOutput(BaseModel):
-    translations: List[str]
 
 
 class RateLimiter:

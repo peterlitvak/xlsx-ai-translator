@@ -1,10 +1,13 @@
 """Translation orchestration services for workbook and zip upload workflows."""
 
 import tempfile
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, Optional, Protocol
 
+from models.single_xlsx_translation_result import SingleXLSXTranslationResult
+from models.translation_usage import TranslationUsage
+from models.zip_translation_progress import ZipTranslationProgress
+from models.zip_xlsx_translation_result import ZipXLSXTranslationResult
 from services.xlsx_translator import XLSXTranslator
 from utils.file_names import translated_xlsx_name, translated_zip_name
 from utils.zip_archives import (
@@ -40,47 +43,6 @@ class XLSXTranslatorLike(Protocol):
 
 
 TranslatorFactory = Callable[..., XLSXTranslatorLike]
-
-
-@dataclass(frozen=True)
-class TranslationUsage:
-    """Actual token and cost usage reported by a translation run."""
-
-    input_tokens: int
-    output_tokens: int
-    cost: float
-
-
-@dataclass(frozen=True)
-class SingleXLSXTranslationResult:
-    """Downloadable result for one translated workbook."""
-
-    data: bytes
-    filename: str
-    mime_type: str
-    usage: TranslationUsage
-
-
-@dataclass(frozen=True)
-class ZipTranslationProgress:
-    """Progress update for one workbook inside a zip translation."""
-
-    relative_path: str
-    workbook_index: int
-    workbook_count: int
-    workbook_progress: float
-    overall_progress: float
-
-
-@dataclass(frozen=True)
-class ZipXLSXTranslationResult:
-    """Downloadable result for a translated zip archive."""
-
-    data: bytes
-    filename: str
-    mime_type: str
-    usage: TranslationUsage
-    workbook_count: int
 
 
 ZipProgressCallback = Callable[[ZipTranslationProgress], None]

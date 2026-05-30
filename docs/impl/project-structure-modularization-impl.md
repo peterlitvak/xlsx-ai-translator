@@ -33,7 +33,7 @@ Avoid functional rewrites unless they are needed to remove duplicated logic or m
 | `app.py` | `src/app/streamlit_app.py` | Keep Streamlit UI rendering here; import services for estimation and translation. |
 | `cli_translate.py` | `src/cli/translate.py` | Keep CLI parsing and report writing here; reuse service/utility modules. |
 | `copy_pattern.py` | `src/cli/copy_pattern.py` | Keep the existing copy utility under CLI code. |
-| `translator.py` | `src/services/xlsx_translator.py` | Keep `XLSXTranslator`, `TranslationOutput`, and `translate_xlsx_file` here. |
+| `translator.py` | `src/services/xlsx_translator.py` | Keep `XLSXTranslator` and `translate_xlsx_file` here; shared DTO models live under `src/models/`. |
 | `pricing.py` | `src/services/model_pricing.py` | Keep `MODEL_PRICING` centralized here. |
 | `app_helpers.py` | split across `src/services/` and `src/utils/` | Move domain workflows to services and pure utilities to utils. |
 
@@ -46,7 +46,8 @@ Move these responsibilities out of `app_helpers.py`:
 | `is_xlsx_filename`, `is_zip_filename`, translated output names | `src/utils/file_names.py` |
 | `UnsafeZipError`, safe extraction, path validation, workbook discovery, zip creation | `src/utils/zip_archives.py` |
 | Workbook text extraction, token estimates, output token factors, cost math | `src/services/translation_estimator.py` |
-| Translation result models, progress models, translator protocol, single XLSX workflow, zip workflow | `src/services/translation_workflow.py` |
+| Translation result models and progress models | `src/models/` with one Pydantic model per file |
+| Translator protocol, single XLSX workflow, zip workflow | `src/services/translation_workflow.py` |
 
 Move duplicated CLI estimation and workbook discovery logic to these same utility/service modules so the CLI and UI use one implementation.
 
@@ -71,15 +72,18 @@ Keep imports flowing in one direction:
 ```text
 app -> services -> utils
 cli -> services -> utils
+app/services/cli -> models/enums
 tests -> app/services/utils/cli
 ```
 
 Rules:
 
 - `utils` must not import `app`, `cli`, Streamlit, LangChain, or OpenAI clients.
-- `services` may import `utils` and third-party workbook/LLM libraries.
-- `app` may import `services` and `utils`, but should not own business logic.
-- `cli` may import `services` and `utils`, but should not duplicate estimator logic.
+- `services` may import `utils`, `models`, `enums`, and third-party workbook/LLM libraries.
+- `app` may import `services`, `utils`, `models`, and `enums`, but should not own business logic.
+- `cli` may import `services`, `utils`, `models`, and `enums`, but should not duplicate estimator logic.
+- DTO-style objects must be Pydantic models under `src/models/`, with one model per file.
+- Shared project enums must live under `src/enums/`.
 - Tests may import any public module needed to verify behavior.
 
 ## Implementation Steps
@@ -90,7 +94,7 @@ Rules:
    - Update `AGENTS.md` to reference `README.md`, `docs/plan/`, and `docs/impl/`.
 
 2. Create package directories.
-   - Add `src/app/`, `src/cli/`, `src/services/`, and `src/utils/`.
+   - Add `src/app/`, `src/cli/`, `src/services/`, `src/utils/`, `src/models/`, and `src/enums/`.
    - Add `__init__.py` files to each package.
 
 3. Move stable service modules.

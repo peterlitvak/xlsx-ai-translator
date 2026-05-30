@@ -2,7 +2,6 @@ import os
 import tempfile
 import unittest
 import zipfile
-from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import ClassVar, Iterable, Optional
@@ -14,6 +13,11 @@ from services.translation_estimator import (
     estimate_translation_costs,
     estimate_xlsx_file,
     extract_translatable_texts,
+)
+from services.download_artifacts import (
+    DOWNLOAD_ARTIFACT_DIR_KEY,
+    cleanup_download_artifact,
+    stage_download_artifact,
 )
 from services.translation_workflow import (
     TranslationError,
@@ -197,24 +201,75 @@ class TestZipHelperUnitTests(unittest.TestCase):
             )
 
 
-@dataclass
+class TestDownloadArtifactServices(unittest.TestCase):
+    def test_stage_download_artifact_writes_file_and_cleanup_removes_directory(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            session_state: dict[str, object] = {}
+            artifact = stage_download_artifact(
+                data=b"translated",
+                filename="result.xlsx",
+                session_state=session_state,
+                work_dir=Path(temp_dir),
+            )
+
+            self.assertEqual(b"translated", artifact.path.read_bytes())
+            self.assertTrue(artifact.directory.exists())
+            self.assertEqual(
+                str(artifact.directory),
+                session_state[DOWNLOAD_ARTIFACT_DIR_KEY],
+            )
+
+            cleanup_download_artifact(session_state)
+
+            self.assertFalse(artifact.directory.exists())
+            self.assertNotIn(DOWNLOAD_ARTIFACT_DIR_KEY, session_state)
+
+    def test_stage_download_artifact_removes_previous_session_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            session_state: dict[str, object] = {}
+            previous_artifact = stage_download_artifact(
+                data=b"first",
+                filename="first.xlsx",
+                session_state=session_state,
+                work_dir=Path(temp_dir),
+            )
+
+            next_artifact = stage_download_artifact(
+                data=b"second",
+                filename="second.xlsx",
+                session_state=session_state,
+                work_dir=Path(temp_dir),
+            )
+
+            self.assertFalse(previous_artifact.directory.exists())
+            self.assertTrue(next_artifact.directory.exists())
+
+
 class FakeTranslator:
     """Fake translator that records constructor inputs and writes test output."""
 
-    input_path: str
-    target_language: str
-    model_name: str
-    max_workers: int
-    rpm_limit: int
-
     created: ClassVar[list["FakeTranslator"]] = []
 
-    error: Optional[str] = None
-    actual_input_tokens: int = 12
-    actual_output_tokens: int = 18
-    actual_cost: float = 0.34
-
-    def __post_init__(self) -> None:
+    def __init__(
+        self,
+        input_path: str,
+        target_language: str,
+        model_name: str,
+        max_workers: int,
+        rpm_limit: int,
+    ) -> None:
+        """Create a fake translator instance and record constructor inputs."""
+        self.input_path = input_path
+        self.target_language = target_language
+        self.model_name = model_name
+        self.max_workers = max_workers
+        self.rpm_limit = rpm_limit
+        self.error: Optional[str] = None
+        self.actual_input_tokens = 12
+        self.actual_output_tokens = 18
+        self.actual_cost = 0.34
         with open(self.input_path, "rb") as input_file:
             self.input_bytes = input_file.read()
         self.get_result_called = False
@@ -235,11 +290,23 @@ class FakeTranslator:
 class ErrorTranslator(FakeTranslator):
     """Fake translator that reports a translation error."""
 
-    error: Optional[str] = None
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        self.error = "boom"
+    def __init__(
+        self,
+        input_path: str,
+        target_language: str,
+        model_name: str,
+        max_workers: int,
+        rpm_limit: int,
+    ) -> None:
+        """Create a fake translator that reports an error."""
+        super().__init__(
+            input_path=input_path,
+            target_language=target_language,
+            model_name=model_name,
+            max_workers=max_workers,
+            rpm_limit=rpm_limit,
+        )
+        self.error: Optional[str] = "boom"
 
 
 class MissingResultTranslator(FakeTranslator):

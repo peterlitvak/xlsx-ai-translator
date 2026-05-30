@@ -20,6 +20,8 @@ The repository uses a modular source layout:
 
 - `src/app/streamlit_app.py` contains the Streamlit UI entry point.
 - `src/cli/translate.py` contains the CLI entry point.
+- `src/enums/` contains shared project enum types.
+- `src/models/` contains shared Pydantic DTO-style models, with one model per file.
 - `src/services/` contains workbook translation, estimation, pricing, and upload orchestration services.
 - `src/utils/` contains deterministic filename and zip archive utilities.
 - `tests/` contains the test suite.
@@ -53,6 +55,8 @@ and Playwright Chromium setup.
 - Use type hints for function parameters, return values, and variables.
 - Write clear and concise docstrings for modules, classes, and methods.
 - Use the `unittest` module when unit tests are requested.
+- Keep DTO-style objects as Pydantic models under `src/models/`, with one model per file.
+- Keep shared project enum types under `src/enums/`.
 - Keep changes minimal, focused, and aligned with the existing docs and code patterns.
 - Run Black and Pyright on touched Python files before finalizing Python changes.
 

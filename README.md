@@ -119,6 +119,92 @@ any `.xlsx` workbooks.
 
 ---
 
+## Running with Docker
+
+Build the Streamlit service image:
+
+```bash
+$ docker build -t xlsx-llm-translator:local .
+```
+
+Run a foreground smoke test on the Docker host:
+
+```bash
+$ mkdir -p .local/docker-work
+$ chmod 1777 .local/docker-work
+$ docker run --rm \
+    --name xlsx-llm-translator \
+    --cpus 1 \
+    --memory 2g \
+    --env OPENAI_API_KEY="$OPENAI_API_KEY" \
+    --volume "$PWD/.local/docker-work:/work" \
+    --publish 8501:8501 \
+    xlsx-llm-translator:local
+```
+
+Run it as a long-lived LAN service:
+
+```bash
+$ mkdir -p .local/docker-work
+$ chmod 1777 .local/docker-work
+$ docker run -d \
+    --name xlsx-llm-translator \
+    --restart unless-stopped \
+    --cpus 1 \
+    --memory 2g \
+    --env-file .env \
+    --volume "$PWD/.local/docker-work:/work" \
+    --publish 8501:8501 \
+    xlsx-llm-translator:local
+```
+
+The UI is available from trusted LAN machines at:
+
+```text
+http://<docker-host-lan-ip>:8501
+```
+
+To deploy to the configured remote LAN Docker host, put these keys in the local `.env` file:
+
+```bash
+OPENAI_API_KEY=sk-...
+DEPLOY_HOST_IP=...
+DEPLOY_HOST_USER=...
+DEPLOY_HOST_PWD=...
+```
+
+Then run:
+
+```bash
+$ ./scripts/deploy_docker_remote.sh
+```
+
+The deploy script builds the image, saves it under `.local/`, copies it to the remote host over SSH, writes a remote
+runtime env file containing only `OPENAI_API_KEY`, loads the image, replaces the container, and checks the Streamlit
+health endpoint. If `DEPLOY_HOST_PWD` is set, the script uses `sshpass -e` when available, falls back to `expect` when
+available, and otherwise uses normal SSH key or interactive authentication. It also creates a host work directory,
+mounts it at `/work`, and starts the container with `--cpus 1 --memory 2g` by default.
+
+Useful deployment overrides:
+
+```bash
+$ INSTALL_DOCKER_IF_MISSING=true ./scripts/deploy_docker_remote.sh
+$ DOCKER_CPUS=2 DOCKER_MEMORY=4g ./scripts/deploy_docker_remote.sh
+$ REMOTE_WORK_DIR=/srv/xlsx-llm-translator/work ./scripts/deploy_docker_remote.sh
+```
+
+Automatic Docker installation is opt-in. Linux hosts use Docker's convenience script and require passwordless `sudo`.
+macOS hosts use Docker Desktop's command-line installer from Docker's official DMG and require an admin password through
+the configured SSH password flow.
+
+Streamlit is configured for uploads up to 500 MB. Uploaded files and generated download artifacts use the mounted work
+directory; staged download artifacts are removed when the download button is clicked.
+
+This app does not include built-in authentication. Publish it only on a trusted in-house network, or place it behind an
+authenticated reverse proxy before exposing it more broadly.
+
+---
+
 ## Running Tests
 
 The integration suite uses real OpenAI calls, and the UI flow tests use Playwright with Chromium.

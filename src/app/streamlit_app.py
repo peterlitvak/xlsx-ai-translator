@@ -1,18 +1,20 @@
 """Streamlit entry point for XLSX and ZIP workbook translation."""
 
 import logging
-import tempfile
 import zipfile
-from dataclasses import dataclass
-from io import BytesIO
-from pathlib import Path
-from typing import Optional, TypedDict
 
 import streamlit as st
 
+from enums.language import SupportedLanguage
+from enums.translation_model import TranslationModel
+from enums.upload_type import UploadType
+from models.upload_summary import UploadSummary
+from services.download_artifacts import (
+    cleanup_download_artifact,
+    stage_download_artifact,
+)
 from services.translation_estimator import (
     estimate_translation_costs,
-    estimate_xlsx_file,
 )
 from services.translation_workflow import (
     TranslationError,
@@ -20,8 +22,9 @@ from services.translation_workflow import (
     translate_single_xlsx,
     translate_xlsx_zip,
 )
+from services.upload_estimator import estimate_uploaded_file
 from utils.file_names import is_xlsx_filename, is_zip_filename
-from utils.zip_archives import UnsafeZipError, find_xlsx_files, safe_extract_zip
+from utils.zip_archives import UnsafeZipError
 
 # Configure logging for Streamlit app
 logging.basicConfig(
@@ -31,140 +34,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-LANGUAGES = {
-    "French": "fr",
-    "German": "de",
-    "Spanish": "es",
-    "Russian": "ru",
-    "Chinese (Simplified)": "zh",
-    "Chinese (Traditional)": "zh-tw",
-    "Italian": "it",
-    "Portuguese": "pt",
-    "Japanese": "ja",
-    "Korean": "ko",
-    "Arabic": "ar",
-    "Hindi": "hi",
-    "Dutch": "nl",
-    "Polish": "pl",
-    "Turkish": "tr",
-    "Czech": "cs",
-    "Greek": "el",
-    "Hebrew": "he",
-    "Vietnamese": "vi",
-    "Ukrainian": "uk",
-    "Swedish": "sv",
-    "Finnish": "fi",
-    "Danish": "da",
-    "Norwegian": "no",
-    "Hungarian": "hu",
-    "Romanian": "ro",
-    "Bulgarian": "bg",
-    "Indonesian": "id",
-    "Thai": "th",
-    "Malay": "ms",
-    "English": "en",
-}
-
-
-class ModelOption(TypedDict):
-    """Streamlit-selectable model configuration."""
-
-    model: str
-    threads: int
-
-
-@dataclass(frozen=True)
-class UploadSummary:
-    """Estimated usage and detected type for an uploaded file."""
-
-    upload_type: str
-    workbook_count: Optional[int]
-    estimated_input_tokens: int
-    estimated_output_tokens: int
-
-
-MODEL_OPTIONS: dict[str, ModelOption] = {
-    "GPT-4o": {"model": "gpt-4o", "threads": 11},
-    "GPT-4o-mini": {"model": "gpt-4o-mini", "threads": 11},
-}
-
-
-def format_func(lang_name: str) -> str:
-    """Format language select options with display name and code."""
-    return f"{lang_name} ({LANGUAGES[lang_name]})"
-
-
-def estimate_uploaded_file(
-    uploaded_bytes: bytes,
-    filename: str,
-    source_language: str,
-    target_language: str,
-    model_name: str,
-) -> UploadSummary:
-    """Estimate aggregate translation usage for an XLSX or ZIP upload."""
-    if is_xlsx_filename(filename):
-        input_tokens, output_tokens, _ = estimate_xlsx_file(
-            BytesIO(uploaded_bytes),
-            source_language,
-            target_language,
-            model_name,
-        )
-        return UploadSummary(
-            upload_type="XLSX workbook",
-            workbook_count=None,
-            estimated_input_tokens=input_tokens,
-            estimated_output_tokens=output_tokens,
-        )
-
-    if is_zip_filename(filename):
-        return estimate_zip_upload(
-            uploaded_bytes,
-            source_language,
-            target_language,
-            model_name,
-        )
-
-    raise TranslationError("Unsupported file type. Upload an .xlsx or .zip file.")
-
-
-def estimate_zip_upload(
-    uploaded_bytes: bytes,
-    source_language: str,
-    target_language: str,
-    model_name: str,
-) -> UploadSummary:
-    """Estimate aggregate translation usage for workbooks inside a zip archive."""
-    with tempfile.TemporaryDirectory() as temp_dir:
-        temp_path = Path(temp_dir)
-        input_zip_path = temp_path / "input.zip"
-        extract_dir = temp_path / "extract"
-
-        input_zip_path.write_bytes(uploaded_bytes)
-        extract_dir.mkdir()
-        safe_extract_zip(str(input_zip_path), str(extract_dir))
-
-        workbook_paths = find_xlsx_files(str(extract_dir))
-        if not workbook_paths:
-            raise TranslationError("No .xlsx workbooks found in the zip archive.")
-
-        input_tokens = 0
-        output_tokens = 0
-        for workbook_path in workbook_paths:
-            workbook_input_tokens, workbook_output_tokens, _ = estimate_xlsx_file(
-                workbook_path,
-                source_language,
-                target_language,
-                model_name,
-            )
-            input_tokens += workbook_input_tokens
-            output_tokens += workbook_output_tokens
-
-    return UploadSummary(
-        upload_type="ZIP archive",
-        workbook_count=len(workbook_paths),
-        estimated_input_tokens=input_tokens,
-        estimated_output_tokens=output_tokens,
-    )
+LANGUAGE_OPTIONS = list(SupportedLanguage)
+MODEL_OPTIONS = list(TranslationModel)
 
 
 st.set_page_config(page_title="XLSX LLM Translator", layout="wide")
@@ -190,32 +61,27 @@ st.markdown(
 
 col1, col2 = st.columns([3, 1], gap="large")
 
-
-lang_names = list(LANGUAGES.keys())
-
 with col1:
     uploaded_file = st.file_uploader("Choose an XLSX or ZIP file", type=["xlsx", "zip"])
-    selected_source_lang_name = st.selectbox(
+    selected_source_language = st.selectbox(
         "Source language",
-        options=lang_names,
-        index=lang_names.index("Japanese"),
-        format_func=format_func,
+        options=LANGUAGE_OPTIONS,
+        index=LANGUAGE_OPTIONS.index(SupportedLanguage.JAPANESE),
     )
-    source_language = LANGUAGES[selected_source_lang_name]
-    selected_lang_name = st.selectbox(
+    source_language = selected_source_language.language_code
+    selected_target_language = st.selectbox(
         "Target language",
-        options=lang_names,
-        index=lang_names.index("English"),
-        format_func=format_func,
+        options=LANGUAGE_OPTIONS,
+        index=LANGUAGE_OPTIONS.index(SupportedLanguage.ENGLISH),
     )
-    target_language = LANGUAGES[selected_lang_name]
-    selected_model = st.selectbox("Model", list(MODEL_OPTIONS.keys()), index=0)
-    model_info = MODEL_OPTIONS[selected_model]
-    model_label = selected_model
+    target_language = selected_target_language.language_code
+    selected_model = st.selectbox("Model", MODEL_OPTIONS, index=0)
+    model_label = selected_model.display_name
     if uploaded_file is not None and st.button("Translate file", key="translate_btn"):
         logger.info(
             f"User triggered translation: {uploaded_file.name} to {target_language} using {model_label}"
         )
+        cleanup_download_artifact(st.session_state)
         uploaded_bytes = uploaded_file.getvalue()
         translation_result = None
 
@@ -233,8 +99,8 @@ with col1:
                     uploaded_bytes=uploaded_bytes,
                     original_filename=uploaded_file.name,
                     target_language=target_language,
-                    model_name=model_info["model"],
-                    max_workers=model_info["threads"],
+                    model_name=selected_model.model_name,
+                    max_workers=selected_model.thread_count,
                     rpm_limit=2555,
                     progress_callback=update_progress,
                 )
@@ -268,8 +134,8 @@ with col1:
                     uploaded_bytes=uploaded_bytes,
                     original_filename=uploaded_file.name,
                     target_language=target_language,
-                    model_name=model_info["model"],
-                    max_workers=model_info["threads"],
+                    model_name=selected_model.model_name,
+                    max_workers=selected_model.thread_count,
                     rpm_limit=2555,
                     progress_callback=update_zip_progress,
                 )
@@ -286,14 +152,22 @@ with col1:
             logger.exception("Unexpected translation failure.")
 
         if translation_result is not None:
+            download_artifact = stage_download_artifact(
+                translation_result.data,
+                translation_result.filename,
+                st.session_state,
+            )
             st.success("Translation complete! Download your file below.")
-            st.download_button(
+            downloaded = st.download_button(
                 label=f"Download translated {translation_result.filename.rsplit('.', 1)[-1].upper()}",
-                data=translation_result.data,
+                data=download_artifact.path.read_bytes(),
                 file_name=translation_result.filename,
                 mime=translation_result.mime_type,
+                on_click=cleanup_download_artifact,
+                args=(st.session_state,),
             )
-            logger.info(f"User downloaded file: {translation_result.filename}")
+            if downloaded:
+                logger.info(f"User downloaded file: {translation_result.filename}")
             # Show actual usage/cost in info panel
             st.session_state["show_actual_usage"] = True
             st.session_state["actual_input_tokens"] = (
@@ -314,17 +188,17 @@ with col2:
                     uploaded_file.name,
                     source_language,
                     target_language,
-                    model_info["model"],
+                    selected_model.model_name,
                 )
         except Exception as exc:
             st.error(f"Could not estimate token usage: {exc}")
             upload_summary = UploadSummary(
-                upload_type="Unknown",
+                upload_type=UploadType.UNKNOWN,
                 workbook_count=None,
                 estimated_input_tokens=0,
                 estimated_output_tokens=0,
             )
-        model_key = model_info["model"]
+        model_key = selected_model.model_name
         input_cost, output_cost, total_cost = estimate_translation_costs(
             upload_summary.estimated_input_tokens,
             upload_summary.estimated_output_tokens,
@@ -338,11 +212,11 @@ with col2:
         info_md = f"""
 **Translation Summary**
 
-- **Upload type:** {upload_summary.upload_type}
+- **Upload type:** {upload_summary.upload_type.display_name}
 {workbook_count_line}- **File:** {uploaded_file.name}
 - **Model:** {model_label}
-- **Source language:** {selected_source_lang_name}
-- **Target language:** {selected_lang_name}
+- **Source language:** {selected_source_language.display_name}
+- **Target language:** {selected_target_language.display_name}
 - **Estimated input tokens:** {upload_summary.estimated_input_tokens}
 - **Estimated output tokens:** {upload_summary.estimated_output_tokens}
 - **Estimated cost:** ${total_cost:.2f}

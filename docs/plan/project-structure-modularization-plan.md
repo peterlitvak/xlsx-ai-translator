@@ -103,14 +103,28 @@ Contains domain and application services.
 - Owns OpenAI-backed XLSX translation.
 - Owns token and cost estimation.
 - Owns upload translation workflows that coordinate single-workbook and zip-archive translation.
-- Owns DTO-style result models used across UI and tests.
 
 Recommended files:
 
-- `src/services/xlsx_translator.py` for `XLSXTranslator`, `TranslationOutput`, and `translate_xlsx_file`.
+- `src/services/xlsx_translator.py` for `XLSXTranslator` and `translate_xlsx_file`.
 - `src/services/model_pricing.py` for model pricing constants.
 - `src/services/translation_estimator.py` for workbook text extraction, token estimation, output token estimation, and cost calculation.
-- `src/services/translation_workflow.py` for `translate_single_xlsx`, `translate_xlsx_zip`, result models, translator protocol, and progress models.
+- `src/services/translation_workflow.py` for `translate_single_xlsx`, `translate_xlsx_zip`, translator protocol, and progress callbacks.
+
+### `src/models/`
+
+Contains shared DTO-style Pydantic models.
+
+- Uses Pydantic models instead of dataclasses for DTO-style objects.
+- Keeps one model per file.
+- Does not contain service orchestration or UI behavior.
+
+### `src/enums/`
+
+Contains shared project enums.
+
+- Owns constrained option sets shared by the UI, services, and tests.
+- Does not contain Streamlit-specific rendering behavior.
 
 ### `src/utils/`
 
@@ -160,7 +174,12 @@ Examples:
 from utils.file_names import is_xlsx_filename
 from services.xlsx_translator import XLSXTranslator
 from services.translation_estimator import estimate_xlsx_file
+from models.translation_usage import TranslationUsage
+from enums.language import SupportedLanguage
 ```
+
+DTO-style objects should be Pydantic models under `src/models/`, with one model per file. Shared project enums should
+live under `src/enums/`.
 
 Expected commands after migration:
 
