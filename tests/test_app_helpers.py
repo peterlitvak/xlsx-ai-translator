@@ -8,6 +8,17 @@ from typing import ClassVar, Iterable, Optional
 
 import openpyxl
 
+from models.translation_usage import TranslationUsage
+from services.actual_usage_state import (
+    ACTUAL_COST_KEY,
+    ACTUAL_INPUT_TOKENS_KEY,
+    ACTUAL_OUTPUT_TOKENS_KEY,
+    ACTUAL_USAGE_SOURCE_KEY,
+    LEGACY_SHOW_ACTUAL_USAGE_KEY,
+    clear_actual_usage_on_source_change,
+    get_actual_usage_for_source,
+    store_actual_usage,
+)
 from services.translation_estimator import (
     estimate_output_tokens,
     estimate_translation_costs,
@@ -245,6 +256,67 @@ class TestDownloadArtifactServices(unittest.TestCase):
 
             self.assertFalse(previous_artifact.directory.exists())
             self.assertTrue(next_artifact.directory.exists())
+
+
+class TestActualUsageStateServices(unittest.TestCase):
+    def test_source_change_clears_stored_actual_usage(self) -> None:
+        session_state: dict[str, object] = {
+            ACTUAL_USAGE_SOURCE_KEY: "source-a",
+            ACTUAL_INPUT_TOKENS_KEY: 12,
+            ACTUAL_OUTPUT_TOKENS_KEY: 18,
+            ACTUAL_COST_KEY: 0.34,
+            LEGACY_SHOW_ACTUAL_USAGE_KEY: True,
+        }
+
+        clear_actual_usage_on_source_change(session_state, "source-b")
+
+        self.assertEqual("source-b", session_state[ACTUAL_USAGE_SOURCE_KEY])
+        self.assertNotIn(ACTUAL_INPUT_TOKENS_KEY, session_state)
+        self.assertNotIn(ACTUAL_OUTPUT_TOKENS_KEY, session_state)
+        self.assertNotIn(ACTUAL_COST_KEY, session_state)
+        self.assertNotIn(LEGACY_SHOW_ACTUAL_USAGE_KEY, session_state)
+
+    def test_same_source_preserves_stored_actual_usage(self) -> None:
+        session_state: dict[str, object] = {}
+        store_actual_usage(
+            session_state,
+            "source-a",
+            TranslationUsage(input_tokens=12, output_tokens=18, cost=0.34),
+        )
+
+        clear_actual_usage_on_source_change(session_state, "source-a")
+
+        actual_usage = get_actual_usage_for_source(session_state, "source-a")
+        self.assertIsNotNone(actual_usage)
+        assert actual_usage is not None
+        self.assertEqual(12, actual_usage.input_tokens)
+        self.assertEqual(18, actual_usage.output_tokens)
+        self.assertEqual(0.34, actual_usage.cost)
+
+    def test_download_cleanup_does_not_clear_stored_actual_usage(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            session_state: dict[str, object] = {}
+            stage_download_artifact(
+                data=b"translated",
+                filename="result.xlsx",
+                session_state=session_state,
+                work_dir=Path(temp_dir),
+            )
+            store_actual_usage(
+                session_state,
+                "source-a",
+                TranslationUsage(input_tokens=12, output_tokens=18, cost=0.34),
+            )
+
+            cleanup_download_artifact(session_state)
+
+            actual_usage = get_actual_usage_for_source(session_state, "source-a")
+            self.assertIsNotNone(actual_usage)
+            assert actual_usage is not None
+            self.assertEqual(12, actual_usage.input_tokens)
+            self.assertEqual(18, actual_usage.output_tokens)
+            self.assertEqual(0.34, actual_usage.cost)
+            self.assertNotIn(DOWNLOAD_ARTIFACT_DIR_KEY, session_state)
 
 
 class FakeTranslator:

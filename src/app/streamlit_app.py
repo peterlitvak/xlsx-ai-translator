@@ -9,6 +9,13 @@ from enums.language import SupportedLanguage
 from enums.translation_model import TranslationModel
 from enums.upload_type import UploadType
 from models.upload_summary import UploadSummary
+from services.actual_usage_state import (
+    clear_actual_usage_on_source_change,
+    forget_uploaded_source,
+    get_actual_usage_for_source,
+    get_uploaded_source_key,
+    store_actual_usage,
+)
 from services.download_artifacts import (
     cleanup_download_artifact,
     stage_download_artifact,
@@ -63,6 +70,13 @@ col1, col2 = st.columns([3, 1], gap="large")
 
 with col1:
     uploaded_file = st.file_uploader("Choose an XLSX or ZIP file", type=["xlsx", "zip"])
+    uploaded_source_key = None
+    if uploaded_file is None:
+        forget_uploaded_source(st.session_state)
+    else:
+        uploaded_source_key = get_uploaded_source_key(uploaded_file)
+        clear_actual_usage_on_source_change(st.session_state, uploaded_source_key)
+
     selected_source_language = st.selectbox(
         "Source language",
         options=LANGUAGE_OPTIONS,
@@ -152,6 +166,8 @@ with col1:
             logger.exception("Unexpected translation failure.")
 
         if translation_result is not None:
+            if uploaded_source_key is None:
+                uploaded_source_key = get_uploaded_source_key(uploaded_file)
             download_artifact = stage_download_artifact(
                 translation_result.data,
                 translation_result.filename,
@@ -168,15 +184,11 @@ with col1:
             )
             if downloaded:
                 logger.info(f"User downloaded file: {translation_result.filename}")
-            # Show actual usage/cost in info panel
-            st.session_state["show_actual_usage"] = True
-            st.session_state["actual_input_tokens"] = (
-                translation_result.usage.input_tokens
+            store_actual_usage(
+                st.session_state,
+                uploaded_source_key,
+                translation_result.usage,
             )
-            st.session_state["actual_output_tokens"] = (
-                translation_result.usage.output_tokens
-            )
-            st.session_state["actual_cost"] = translation_result.usage.cost
 
 with col2:
     if uploaded_file is not None:
@@ -224,18 +236,15 @@ with col2:
     - _Output:_ ${output_cost:.2f}
 """
         st.info(info_md)
-        # Show actual usage/cost if available
-        if st.session_state.get("show_actual_usage"):
-            actual_input = st.session_state.get("actual_input_tokens")
-            actual_output = st.session_state.get("actual_output_tokens")
-            actual_cost = st.session_state.get("actual_cost")
-            if (
-                actual_input is not None
-                and actual_output is not None
-                and actual_cost is not None
-            ):
+        if uploaded_source_key is not None:
+            actual_usage = get_actual_usage_for_source(
+                st.session_state,
+                uploaded_source_key,
+            )
+            if actual_usage is not None:
                 st.info(
-                    f"**Actual OpenAI usage:**\n\n- Input tokens: {actual_input}\n- Output tokens: {actual_output}\n- Actual cost: ${actual_cost:.2f}"
+                    "**Actual OpenAI usage:**\n\n"
+                    f"- Input tokens: {actual_usage.input_tokens}\n"
+                    f"- Output tokens: {actual_usage.output_tokens}\n"
+                    f"- Actual cost: ${actual_usage.cost:.2f}"
                 )
-            # Reset after showing
-            st.session_state["show_actual_usage"] = False

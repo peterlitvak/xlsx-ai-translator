@@ -111,8 +111,8 @@ target-language suffix. For example, `nested/report.xlsx` becomes `nested/report
 in the translated download.
 
 The summary panel shows the upload type, workbook count for zip archives, selected model, languages, estimated tokens,
-and estimated cost. After a successful translation, it also shows actual OpenAI input tokens, output tokens, and cost.
-Zip translations show both overall archive progress and current workbook progress.
+and estimated cost. After a successful translation, it also shows actual OpenAI input tokens, output tokens, and cost
+until another source file is uploaded. Zip translations show both overall archive progress and current workbook progress.
 
 The UI rejects unsupported file types, invalid zip files, unsafe zip member paths, and zip archives that do not contain
 any `.xlsx` workbooks.
