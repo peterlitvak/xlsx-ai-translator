@@ -19,11 +19,15 @@ def copy_matching(source_dir, target_dir, pattern):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Copy files and directories matching a pattern, preserving structure.")
-    parser.add_argument('source', help='Source directory to scan')
-    parser.add_argument('target', help='Target directory to copy to')
-    parser.add_argument('pattern',
-                        help='Glob pattern to match relative paths (e.g. "en/*.xlsx", "*.txt", "foo/bar/*", "en/**/*.xlsx")')
+    parser = argparse.ArgumentParser(
+        description="Copy files and directories matching a pattern, preserving structure."
+    )
+    parser.add_argument("source", help="Source directory to scan")
+    parser.add_argument("target", help="Target directory to copy to")
+    parser.add_argument(
+        "pattern",
+        help='Glob pattern to match relative paths (e.g. "en/*.xlsx", "*.txt", "foo/bar/*", "en/**/*.xlsx")',
+    )
     args = parser.parse_args()
     copy_matching(args.source, args.target, args.pattern)
 

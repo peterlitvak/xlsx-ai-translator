@@ -6,15 +6,13 @@ import warnings
 from typing import List, Tuple
 import csv
 from datetime import datetime
+from pathlib import Path
 
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
 from tqdm import tqdm
 
-MODEL_THREADS = {
-    "gpt-4o": 11,
-    "gpt-4o-mini": 11
-}
+MODEL_THREADS = {"gpt-4o": 11, "gpt-4o-mini": 11}
 
 from translator import XLSXTranslator, suppress_info_logging
 
@@ -37,14 +35,37 @@ OUTPUT_TOKEN_FACTORS: dict[Tuple[str, str], float] = {
 }
 
 
-def find_xlsx_files(root_dir: str) -> List[str]:
-    """Recursively find all .xlsx files under root_dir."""
-    xlsx_files = []
-    for dirpath, _, filenames in os.walk(root_dir):
+def find_xlsx_files(source_path: str) -> List[str]:
+    """Find supported workbook files from a single XLSX file or directory tree."""
+    source = Path(source_path)
+    if source.is_file():
+        return [str(source)] if is_xlsx_filename(source.name) else []
+
+    if not source.is_dir():
+        return []
+
+    xlsx_files: List[str] = []
+    for dirpath, _, filenames in os.walk(source):
         for filename in filenames:
-            if filename.lower().endswith('.xlsx'):
+            if is_xlsx_filename(filename):
                 xlsx_files.append(os.path.join(dirpath, filename))
-    return xlsx_files
+    return sorted(xlsx_files)
+
+
+def is_xlsx_filename(filename: str) -> bool:
+    """Return true when filename is a supported workbook name."""
+    base_name = os.path.basename(filename)
+    if base_name.startswith(("~$", "._")):
+        return False
+    return base_name.lower().endswith(".xlsx")
+
+
+def get_report_root(source_path: str) -> str:
+    """Return the directory where CLI summary reports should be written."""
+    source = Path(source_path)
+    if source.is_file():
+        return str(source.parent)
+    return str(source)
 
 
 def ensure_target_subdir(src_file: str, target_lang: str) -> str:
@@ -56,11 +77,15 @@ def ensure_target_subdir(src_file: str, target_lang: str) -> str:
     return os.path.join(target_dir, f"{base}_{target_lang}{ext}")
 
 
-def estimate_cost(file_path: str, source_lang: str, target_lang: str, model_name: str) -> Tuple[int, int, float]:
+def estimate_cost(
+    file_path: str, source_lang: str, target_lang: str, model_name: str
+) -> Tuple[int, int, float]:
     """Estimate input/output tokens and cost for translating a single XLSX file."""
     wb = openpyxl.load_workbook(file_path)
     texts: List[str] = []
-    sheets = [s for s in wb.worksheets if getattr(s, "sheet_state", "visible") == "visible"]
+    sheets = [
+        s for s in wb.worksheets if getattr(s, "sheet_state", "visible") == "visible"
+    ]
     for sheet in sheets:
         for row in sheet.iter_rows():
             for cell in row:
@@ -77,18 +102,36 @@ def estimate_cost(file_path: str, source_lang: str, target_lang: str, model_name
     factor: float = OUTPUT_TOKEN_FACTORS.get((source_lang, target_lang), 1.0)
     est_output_tokens = int(total_input_tokens * factor)
     price = MODEL_PRICING.get(model_name, MODEL_PRICING["gpt-4o"])
-    cost = (total_input_tokens / 1000 * price["input"]) + (est_output_tokens / 1000 * price["output"])
+    cost = (total_input_tokens / 1000 * price["input"]) + (
+        est_output_tokens / 1000 * price["output"]
+    )
     return total_input_tokens, est_output_tokens, cost
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Batch XLSX Translator")
-    parser.add_argument('--root', required=True, help='Root directory to search for .xlsx files')
-    parser.add_argument('--source', required=True, help='Source language code (e.g., en)')
-    parser.add_argument('--target', required=True, help='Target language code (e.g., fr)')
-    parser.add_argument('--model', default='gpt-4o', choices=['gpt-4o', 'gpt-4o-mini'],
-                        help='Model name to use (default: gpt-4o)')
-    parser.add_argument('--estimate', action='store_true', help='Dry run: estimate token usage and cost only')
+    parser.add_argument(
+        "--root",
+        required=True,
+        help="Root directory to search for .xlsx files, or one .xlsx file",
+    )
+    parser.add_argument(
+        "--source", required=True, help="Source language code (e.g., en)"
+    )
+    parser.add_argument(
+        "--target", required=True, help="Target language code (e.g., fr)"
+    )
+    parser.add_argument(
+        "--model",
+        default="gpt-4o",
+        choices=["gpt-4o", "gpt-4o-mini"],
+        help="Model name to use (default: gpt-4o)",
+    )
+    parser.add_argument(
+        "--estimate",
+        action="store_true",
+        help="Dry run: estimate token usage and cost only",
+    )
     args = parser.parse_args()
 
     # Suppress info logs for CLI usage
@@ -98,21 +141,22 @@ def main() -> None:
     for handler in logging.root.handlers:
         handler.setLevel(logging.WARNING)
 
-    root: str = args.root
+    source_path: str = args.root
     source_lang: str = args.source
     target_lang: str = args.target
     model_name: str = args.model
     estimate_only: bool = args.estimate
 
-    xlsx_files: List[str] = find_xlsx_files(root)
+    report_root = get_report_root(source_path)
+    xlsx_files: List[str] = find_xlsx_files(source_path)
     if not xlsx_files:
-        print(f"No .xlsx files found in {root}")
+        print(f"No .xlsx files found in {source_path}")
         sys.exit(1)
 
     print(f"Found {len(xlsx_files)} .xlsx files. Starting translation...")
 
     # Setup logging
-    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     # Dry-run estimation mode
     if estimate_only:
@@ -120,16 +164,27 @@ def main() -> None:
         grand_cost = 0.0
         # Prepare report file in root directory
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        report_path = os.path.join(root, f"estimate_report_{source_lang}_to_{target_lang}_{ts}.csv")
+        report_path = os.path.join(
+            report_root, f"estimate_report_{source_lang}_to_{target_lang}_{ts}.csv"
+        )
         with open(report_path, "w", newline="") as csvfile:
             writer = csv.writer(csvfile)
             writer.writerow(["file", "input_tokens", "output_tokens", "cost_usd"])
             for src_file in tqdm(xlsx_files, desc="Estimating", unit="file"):
-                in_tok, out_tok, cost = estimate_cost(src_file, source_lang, target_lang, model_name)
+                in_tok, out_tok, cost = estimate_cost(
+                    src_file, source_lang, target_lang, model_name
+                )
                 grand_in += in_tok
                 grand_out += out_tok
                 grand_cost += cost
-                writer.writerow([os.path.relpath(src_file, root), in_tok, out_tok, f"{cost:.2f}"])
+                writer.writerow(
+                    [
+                        os.path.relpath(src_file, report_root),
+                        in_tok,
+                        out_tok,
+                        f"{cost:.2f}",
+                    ]
+                )
             # totals row
             writer.writerow(["TOTAL", grand_in, grand_out, f"{grand_cost:.2f}"])
 
@@ -143,26 +198,38 @@ def main() -> None:
 
     # Prepare actual cost report
     ts_run = datetime.now().strftime("%Y%m%d_%H%M%S")
-    report_actual_path = os.path.join(root, f"actual_report_{source_lang}_to_{target_lang}_{ts_run}.csv")
+    report_actual_path = os.path.join(
+        report_root, f"actual_report_{source_lang}_to_{target_lang}_{ts_run}.csv"
+    )
     grand_act_in = grand_act_out = 0
     grand_act_cost = 0.0
     with open(report_actual_path, "w", newline="") as csvfile:
         writer_act = csv.writer(csvfile)
         writer_act.writerow(["file", "input_tokens", "output_tokens", "cost_usd"])
 
-        for file_idx, src_file in enumerate(tqdm(xlsx_files, desc="Files", unit="file")):
+        for file_idx, src_file in enumerate(
+            tqdm(xlsx_files, desc="Files", unit="file")
+        ):
             out_file: str = ensure_target_subdir(src_file, target_lang)
             try:
                 # Select model and threads
                 max_workers = MODEL_THREADS.get(model_name, 11)
-                translator = XLSXTranslator(src_file,
-                                            target_language=target_lang,
-                                            max_workers=max_workers,
-                                            model_name=model_name,
-                                            rpm_limit=2555)
+                translator = XLSXTranslator(
+                    src_file,
+                    target_language=target_lang,
+                    max_workers=max_workers,
+                    model_name=model_name,
+                    rpm_limit=2555,
+                )
                 # Per-file progress as percent
                 pbar_total = 100
-                pbar = tqdm(total=pbar_total, desc=os.path.basename(src_file), unit="%", position=1, leave=False)
+                pbar = tqdm(
+                    total=pbar_total,
+                    desc=os.path.basename(src_file),
+                    unit="%",
+                    position=1,
+                    leave=False,
+                )
                 last_percent = 0
                 for prog in translator.translate_with_progress():
                     percent = int(prog * 100)
@@ -179,13 +246,29 @@ def main() -> None:
                 grand_act_in += in_tok
                 grand_act_out += out_tok
                 grand_act_cost += cost_val
-                writer_act.writerow([os.path.relpath(src_file, root), in_tok, out_tok, f"{cost_val:.2f}"])
+                writer_act.writerow(
+                    [
+                        os.path.relpath(src_file, report_root),
+                        in_tok,
+                        out_tok,
+                        f"{cost_val:.2f}",
+                    ]
+                )
             except Exception as e:
                 logging.error(f"Failed to translate {src_file}: {e}")
-                writer_act.writerow([os.path.relpath(src_file, root), "ERROR", "ERROR", "ERROR"])
+                writer_act.writerow(
+                    [
+                        os.path.relpath(src_file, report_root),
+                        "ERROR",
+                        "ERROR",
+                        "ERROR",
+                    ]
+                )
 
         # totals row
-        writer_act.writerow(["TOTAL", grand_act_in, grand_act_out, f"{grand_act_cost:.2f}"])
+        writer_act.writerow(
+            ["TOTAL", grand_act_in, grand_act_out, f"{grand_act_cost:.2f}"]
+        )
 
     print("\n=== Actual Usage Summary ===")
     print(f"Total input tokens : {grand_act_in}")

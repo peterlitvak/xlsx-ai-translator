@@ -1,17 +1,32 @@
 import logging
-import os
 import tempfile
+import zipfile
+from dataclasses import dataclass
+from io import BytesIO
+from pathlib import Path
+from typing import Optional, TypedDict
 
-import openpyxl
 import streamlit as st
 
-from translator import XLSXTranslator
+from app_helpers import (
+    TranslationError,
+    UnsafeZipError,
+    ZipTranslationProgress,
+    estimate_translation_costs,
+    estimate_xlsx_file,
+    find_xlsx_files,
+    is_xlsx_filename,
+    is_zip_filename,
+    safe_extract_zip,
+    translate_single_xlsx,
+    translate_xlsx_zip,
+)
 
 # Configure logging for Streamlit app
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s %(levelname)s %(message)s',
-    handlers=[logging.StreamHandler()]
+    format="%(asctime)s %(levelname)s %(message)s",
+    handlers=[logging.StreamHandler()],
 )
 logger = logging.getLogger(__name__)
 
@@ -46,37 +61,116 @@ LANGUAGES = {
     "Indonesian": "id",
     "Thai": "th",
     "Malay": "ms",
-    "English": "en"
+    "English": "en",
 }
 
-MODEL_OPTIONS = {
+
+class ModelOption(TypedDict):
+    """Streamlit-selectable model configuration."""
+
+    model: str
+    threads: int
+
+
+@dataclass(frozen=True)
+class UploadSummary:
+    """Estimated usage and detected type for an uploaded file."""
+
+    upload_type: str
+    workbook_count: Optional[int]
+    estimated_input_tokens: int
+    estimated_output_tokens: int
+
+
+MODEL_OPTIONS: dict[str, ModelOption] = {
     "GPT-4o": {"model": "gpt-4o", "threads": 11},
-    "GPT-4o-mini": {"model": "gpt-4o-mini", "threads": 11}
+    "GPT-4o-mini": {"model": "gpt-4o-mini", "threads": 11},
 }
 
-# Pricing info per model (July 2025)
-MODEL_PRICING = {
-    "gpt-4o": {"input": 0.005, "output": 0.015},  # $ per 1K tokens
-    "gpt-4o-mini": {"input": 0.0005, "output": 0.0015}
-}
 
-# Output token estimation factors by (source, target) language pair
-OUTPUT_TOKEN_FACTORS = {
-    ("en", "en"): 1.0,
-    ("en", "ja"): 0.6,
-    ("en", "de"): 1.1,
-    ("en", "fr"): 1.1,
-    ("en", "zh"): 0.7,
-    ("ja", "en"): 1.7,
-    ("ja", "ja"): 1.0,
-    ("de", "en"): 0.9,
-    ("fr", "en"): 0.9,
-    # add more as needed
-}
+def format_func(lang_name: str) -> str:
+    """Format language select options with display name and code."""
+    return f"{lang_name} ({LANGUAGES[lang_name]})"
+
+
+def estimate_uploaded_file(
+    uploaded_bytes: bytes,
+    filename: str,
+    source_language: str,
+    target_language: str,
+    model_name: str,
+) -> UploadSummary:
+    """Estimate aggregate translation usage for an XLSX or ZIP upload."""
+    if is_xlsx_filename(filename):
+        input_tokens, output_tokens, _ = estimate_xlsx_file(
+            BytesIO(uploaded_bytes),
+            source_language,
+            target_language,
+            model_name,
+        )
+        return UploadSummary(
+            upload_type="XLSX workbook",
+            workbook_count=None,
+            estimated_input_tokens=input_tokens,
+            estimated_output_tokens=output_tokens,
+        )
+
+    if is_zip_filename(filename):
+        return estimate_zip_upload(
+            uploaded_bytes,
+            source_language,
+            target_language,
+            model_name,
+        )
+
+    raise TranslationError("Unsupported file type. Upload an .xlsx or .zip file.")
+
+
+def estimate_zip_upload(
+    uploaded_bytes: bytes,
+    source_language: str,
+    target_language: str,
+    model_name: str,
+) -> UploadSummary:
+    """Estimate aggregate translation usage for workbooks inside a zip archive."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        input_zip_path = temp_path / "input.zip"
+        extract_dir = temp_path / "extract"
+
+        input_zip_path.write_bytes(uploaded_bytes)
+        extract_dir.mkdir()
+        safe_extract_zip(str(input_zip_path), str(extract_dir))
+
+        workbook_paths = find_xlsx_files(str(extract_dir))
+        if not workbook_paths:
+            raise TranslationError("No .xlsx workbooks found in the zip archive.")
+
+        input_tokens = 0
+        output_tokens = 0
+        for workbook_path in workbook_paths:
+            workbook_input_tokens, workbook_output_tokens, _ = estimate_xlsx_file(
+                workbook_path,
+                source_language,
+                target_language,
+                model_name,
+            )
+            input_tokens += workbook_input_tokens
+            output_tokens += workbook_output_tokens
+
+    return UploadSummary(
+        upload_type="ZIP archive",
+        workbook_count=len(workbook_paths),
+        estimated_input_tokens=input_tokens,
+        estimated_output_tokens=output_tokens,
+    )
+
 
 st.set_page_config(page_title="XLSX LLM Translator", layout="wide")
 st.title("XLSX LLM Translator")
-st.markdown("Upload an .xlsx file and translate all its text using GPT-4o or GPT-4o-mini")
+st.markdown(
+    "Upload an .xlsx file or a .zip archive and translate workbook text using GPT-4o or GPT-4o-mini"
+)
 st.markdown(
     """
     <style>
@@ -96,14 +190,10 @@ st.markdown(
 col1, col2 = st.columns([3, 1], gap="large")
 
 
-def format_func(lang_name):
-    return f"{lang_name} ({LANGUAGES[lang_name]})"
-
-
 lang_names = list(LANGUAGES.keys())
 
 with col1:
-    uploaded_file = st.file_uploader("Choose an XLSX file", type=["xlsx"])
+    uploaded_file = st.file_uploader("Choose an XLSX or ZIP file", type=["xlsx", "zip"])
     selected_source_lang_name = st.selectbox(
         "Source language",
         options=lang_names,
@@ -121,101 +211,139 @@ with col1:
     selected_model = st.selectbox("Model", list(MODEL_OPTIONS.keys()), index=0)
     model_info = MODEL_OPTIONS[selected_model]
     model_label = selected_model
-    if uploaded_file is not None and st.button("Translate XLSX", key="translate_btn"):
-        logger.info(f"User triggered translation: {uploaded_file.name} to {target_language} using {model_label}")
-        temp_input = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
-        input_path = temp_input.name
-        temp_output = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
-        output_path = temp_output.name
-        with open(input_path, "wb") as f:
-            f.write(uploaded_file.read())
-        translator = XLSXTranslator(
-            input_path=input_path,
-            target_language=target_language,
-            model_name=model_info["model"],
-            max_workers=model_info["threads"],
-            rpm_limit=2555
+    if uploaded_file is not None and st.button("Translate file", key="translate_btn"):
+        logger.info(
+            f"User triggered translation: {uploaded_file.name} to {target_language} using {model_label}"
         )
-        progress_bar = st.progress(0, text="Starting translation...")
-        try:
-            for prog in translator.translate_with_progress():
-                progress_bar.progress(prog, text=f"{int(prog * 100)}% complete")
-            if translator.error:
-                st.error(f"Translation failed: {translator.error}")
-                logger.error(f"Translation failed: {translator.error}")
-            else:
-                result_path = translator.get_result(output_path)
-                if result_path:
-                    # Compose download filename: {original}_{lang}.xlsx
-                    import os
+        uploaded_bytes = uploaded_file.getvalue()
+        translation_result = None
 
-                    orig_base = os.path.splitext(os.path.basename(uploaded_file.name))[0]
-                    lang_code = target_language
-                    download_filename = f"{orig_base}_{lang_code}.xlsx"
-                    with open(result_path, "rb") as f:
-                        st.success("Translation complete! Download your file below.")
-                        st.download_button(
-                            label="Download translated XLSX",
-                            data=f,
-                            file_name=download_filename,
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
-                        logger.info(f"User downloaded file: {download_filename}")
-                    # Show actual usage/cost in info panel
-                    st.session_state["show_actual_usage"] = True
-                    st.session_state["actual_input_tokens"] = getattr(translator, "actual_input_tokens", None)
-                    st.session_state["actual_output_tokens"] = getattr(translator, "actual_output_tokens", None)
-                    st.session_state["actual_cost"] = getattr(translator, "actual_cost", None)
-                else:
-                    st.error("Translation failed. See logs for details.")
-        finally:
-            try:
-                os.remove(input_path)
-            except Exception:
-                pass
-            try:
-                if os.path.exists(output_path):
-                    os.remove(output_path)
-            except Exception:
-                pass
+        try:
+            if is_xlsx_filename(uploaded_file.name):
+                progress_bar = st.progress(0, text="Starting translation...")
+
+                def update_progress(progress: float) -> None:
+                    progress_bar.progress(
+                        progress,
+                        text=f"{int(progress * 100)}% complete",
+                    )
+
+                translation_result = translate_single_xlsx(
+                    uploaded_bytes=uploaded_bytes,
+                    original_filename=uploaded_file.name,
+                    target_language=target_language,
+                    model_name=model_info["model"],
+                    max_workers=model_info["threads"],
+                    rpm_limit=2555,
+                    progress_callback=update_progress,
+                )
+            elif is_zip_filename(uploaded_file.name):
+                overall_progress_bar = st.progress(
+                    0,
+                    text="Starting archive translation...",
+                )
+                workbook_progress_bar = st.progress(
+                    0,
+                    text="Waiting for workbook translation...",
+                )
+
+                def update_zip_progress(progress: ZipTranslationProgress) -> None:
+                    overall_progress_bar.progress(
+                        progress.overall_progress,
+                        text=(
+                            f"Workbook {progress.workbook_index} of "
+                            f"{progress.workbook_count}: {progress.relative_path}"
+                        ),
+                    )
+                    workbook_progress_bar.progress(
+                        progress.workbook_progress,
+                        text=(
+                            f"{int(progress.workbook_progress * 100)}% complete: "
+                            f"{progress.relative_path}"
+                        ),
+                    )
+
+                translation_result = translate_xlsx_zip(
+                    uploaded_bytes=uploaded_bytes,
+                    original_filename=uploaded_file.name,
+                    target_language=target_language,
+                    model_name=model_info["model"],
+                    max_workers=model_info["threads"],
+                    rpm_limit=2555,
+                    progress_callback=update_zip_progress,
+                )
+            else:
+                st.error("Unsupported file type. Upload an .xlsx or .zip file.")
+        except (TranslationError, UnsafeZipError) as exc:
+            st.error(str(exc))
+            logger.error(str(exc))
+        except zipfile.BadZipFile:
+            st.error("Could not read zip archive. Upload a valid .zip file.")
+            logger.exception("Could not read uploaded zip archive.")
+        except Exception as exc:
+            st.error(f"Translation failed: {exc}")
+            logger.exception("Unexpected translation failure.")
+
+        if translation_result is not None:
+            st.success("Translation complete! Download your file below.")
+            st.download_button(
+                label=f"Download translated {translation_result.filename.rsplit('.', 1)[-1].upper()}",
+                data=translation_result.data,
+                file_name=translation_result.filename,
+                mime=translation_result.mime_type,
+            )
+            logger.info(f"User downloaded file: {translation_result.filename}")
+            # Show actual usage/cost in info panel
+            st.session_state["show_actual_usage"] = True
+            st.session_state["actual_input_tokens"] = (
+                translation_result.usage.input_tokens
+            )
+            st.session_state["actual_output_tokens"] = (
+                translation_result.usage.output_tokens
+            )
+            st.session_state["actual_cost"] = translation_result.usage.cost
 
 with col2:
     if uploaded_file is not None:
         try:
-            import tiktoken
-
-            enc = tiktoken.encoding_for_model(model_info["model"])
-            texts = []
-            wb = openpyxl.load_workbook(uploaded_file)
-            sheets = [sheet for sheet in wb.worksheets if getattr(sheet, 'sheet_state', 'visible') == 'visible']
-            progress = st.progress(0, text="Estimating tokens...")
-            for idx, sheet in enumerate(sheets):
-                for row in sheet.iter_rows():
-                    for cell in row:
-                        if cell.value and isinstance(cell.value, str):
-                            val = cell.value.strip()
-                            if val and any(char.isalnum() for char in val):
-                                texts.append(cell.value)
-                progress.progress((idx + 1) / len(sheets), text=f"Estimating tokens... ({idx + 1}/{len(sheets)})")
-            total_tokens = sum(len(enc.encode(str(text))) for text in texts)
-            progress.empty()
-        except Exception:
-            total_tokens = sum(len(str(text).split()) for text in texts)
+            uploaded_bytes = uploaded_file.getvalue()
+            with st.spinner("Estimating tokens..."):
+                upload_summary = estimate_uploaded_file(
+                    uploaded_bytes,
+                    uploaded_file.name,
+                    source_language,
+                    target_language,
+                    model_info["model"],
+                )
+        except Exception as exc:
+            st.error(f"Could not estimate token usage: {exc}")
+            upload_summary = UploadSummary(
+                upload_type="Unknown",
+                workbook_count=None,
+                estimated_input_tokens=0,
+                estimated_output_tokens=0,
+            )
         model_key = model_info["model"]
-        price_info = MODEL_PRICING.get(model_key, MODEL_PRICING["gpt-4o"])
-        factor = OUTPUT_TOKEN_FACTORS.get((source_language, target_language), 1.0)
-        est_output_tokens = int(total_tokens * factor)
-        input_cost = total_tokens / 1000 * price_info["input"]
-        output_cost = est_output_tokens / 1000 * price_info["output"]
-        total_cost = input_cost + output_cost
+        input_cost, output_cost, total_cost = estimate_translation_costs(
+            upload_summary.estimated_input_tokens,
+            upload_summary.estimated_output_tokens,
+            model_key,
+        )
+        workbook_count_line = (
+            f"- **Workbooks detected:** {upload_summary.workbook_count}\n"
+            if upload_summary.workbook_count is not None
+            else ""
+        )
         info_md = f"""
 **Translation Summary**
 
+- **Upload type:** {upload_summary.upload_type}
+{workbook_count_line}- **File:** {uploaded_file.name}
 - **Model:** {model_label}
 - **Source language:** {selected_source_lang_name}
 - **Target language:** {selected_lang_name}
-- **Estimated input tokens:** {total_tokens}
-- **Estimated output tokens:** {est_output_tokens}
+- **Estimated input tokens:** {upload_summary.estimated_input_tokens}
+- **Estimated output tokens:** {upload_summary.estimated_output_tokens}
 - **Estimated cost:** ${total_cost:.2f}
     - _Input:_ ${input_cost:.2f}
     - _Output:_ ${output_cost:.2f}
@@ -226,8 +354,13 @@ with col2:
             actual_input = st.session_state.get("actual_input_tokens")
             actual_output = st.session_state.get("actual_output_tokens")
             actual_cost = st.session_state.get("actual_cost")
-            if actual_input is not None and actual_output is not None and actual_cost is not None:
+            if (
+                actual_input is not None
+                and actual_output is not None
+                and actual_cost is not None
+            ):
                 st.info(
-                    f"**Actual OpenAI usage:**\n\n- Input tokens: {actual_input}\n- Output tokens: {actual_output}\n- Actual cost: ${actual_cost:.2f}")
+                    f"**Actual OpenAI usage:**\n\n- Input tokens: {actual_input}\n- Output tokens: {actual_output}\n- Actual cost: ${actual_cost:.2f}"
+                )
             # Reset after showing
             st.session_state["show_actual_usage"] = False

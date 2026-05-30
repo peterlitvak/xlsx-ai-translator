@@ -1,9 +1,16 @@
-# XLSX LLM Translator Backend
+# XLSX LLM Translator
 
-A Python service that accepts XLSX files, extracts text, translates it using LangChain + OpenAI GPT-4o, and returns a translated XLSX file.
+A Python service and Streamlit UI that translate Excel `.xlsx` workbooks using LangChain and OpenAI models. The CLI
+translates one workbook or every workbook under a directory tree. The web UI accepts either one `.xlsx` file or a `.zip`
+archive containing workbooks.
 
 ## Features
-- Translate all text in XLSX files using GPT-4o
+
+- Translate workbook text using GPT-4o or GPT-4o mini
+- Upload a single `.xlsx` file or a `.zip` archive through the Streamlit UI
+- Preserve workbook paths inside translated zip downloads
+- Estimate token usage and cost before translation, then show actual OpenAI usage after translation
+- Translate one CLI source file or every `.xlsx` file under a directory
 - Simple function: `translate_xlsx_file(input_path, output_path, target_language)`
 
 ## Usage Example
@@ -11,7 +18,7 @@ A Python service that accepts XLSX files, extracts text, translates it using Lan
 ```python
 from translator import translate_xlsx_file
 
-translate_xlsx_file('input.xlsx', 'output.xlsx', target_language='fr')
+translate_xlsx_file("input.xlsx", "output.xlsx", target_language="fr")
 ```
 
 ## Installation
@@ -39,7 +46,8 @@ $ source .venv/bin/activate          # on macOS / Linux
 
 ### 4. Set your OpenAI credentials
 
-The application relies on the OpenAI API. Make sure you have an API key, then export it as an environment variable so both the CLI and UI can read it:
+The application relies on the OpenAI API. Make sure you have an API key, then export it as an environment variable so
+both the CLI and UI can read it:
 
 ```bash
 (.venv) $ export OPENAI_API_KEY="sk-..."
@@ -49,35 +57,37 @@ The application relies on the OpenAI API. Make sure you have an API key, then ex
 
 ## Running the Command-Line Interface (CLI)
 
-The CLI translates **all** `.xlsx` files under a directory (recursively) and writes the translated versions to a sibling sub-folder named after the target language code (e.g. `fr`).
+The CLI accepts `--root` as either one `.xlsx` file or a directory. Directory input is searched recursively. Real
+translation runs write translated workbooks into a target-language subdirectory next to each source workbook:
+`reports/q1.xlsx` becomes `reports/en/q1_en.xlsx`.
 
 ```bash
-# Basic usage
-(.venv) $ python cli_translate.py \
-    --root ./my_spreadsheets \
-    --source ja \
-    --target en \
-    --model gpt-4o
+# Translate one workbook
+(.venv) $ python cli_translate.py --root ./test_fixtures/sample.xlsx --source ja --target en --model gpt-4o
+
+# Translate every workbook under a directory
+(.venv) $ python cli_translate.py --root ./my_spreadsheets --source ja --target en --model gpt-4o
 ```
 
-# Dry run (token & cost estimation only)
-(.venv) $ python cli_translate.py \
-    --root ./my_spreadsheets \
-    --source ja \
-    --target en \
-    --estimate
+Dry run token and cost estimation:
+
+```bash
+(.venv) $ python cli_translate.py --root ./my_spreadsheets --source ja --target en --estimate
+```
 
 Arguments:
 
-| Flag | Description |
-|------|-------------|
-| `--root`   | Root directory to search for `.xlsx` files |
-| `--source` | Source language code (ISO-639-1) |
-| `--target` | Target language code (ISO-639-1) |
-| `--model`  | `gpt-4o` (default) or `gpt-4o-mini` |
+| Flag         | Description                                                      |
+|--------------|------------------------------------------------------------------|
+| `--root`     | One `.xlsx` file or a root directory to search recursively       |
+| `--source`   | Source language code (ISO-639-1)                                 |
+| `--target`   | Target language code (ISO-639-1)                                 |
+| `--model`    | `gpt-4o` (default) or `gpt-4o-mini`                              |
 | `--estimate` | Perform a dry-run cost estimation without calling the OpenAI API |
 
-After a **real** translation run (i.e., without `--estimate`), the CLI automatically writes an `actual_report_<src>_to_<tgt>_<timestamp>.csv` file in the root directory. This report contains per-file token usage and cost, plus overall totals.
+Dry runs write `estimate_report_<src>_to_<tgt>_<timestamp>.csv`. Real translation runs write
+`actual_report_<src>_to_<tgt>_<timestamp>.csv`. Reports are written to the source file's parent directory for single-file
+runs, or to the root directory for directory runs. Each report contains per-file token usage and cost plus overall totals.
 
 ---
 
@@ -89,12 +99,39 @@ Launch the Streamlit app to translate files through an interactive web interface
 (.venv) $ streamlit run app.py
 ```
 
-Visit the URL printed in the console (typically http://localhost:8501) and upload the spreadsheet you wish to translate. The UI will estimate token usage, cost, and allow you to download the translated file once finished.
+Visit the URL printed in the console (typically http://localhost:8501) and upload the spreadsheet you wish to translate.
+For a local smoke test, use `test_fixtures/sample.xlsx` or `test_fixtures/sample.zip`.
+
+The file picker accepts:
+
+- `.xlsx`: translates one workbook and downloads `<original_base>_<target>.xlsx`.
+- `.zip`: safely extracts the archive, translates every `.xlsx` workbook found recursively, and downloads
+  `<original_zip_base>_<target>.zip`.
+
+For zip uploads, translated workbook paths are preserved inside the archive and each workbook basename receives the
+target-language suffix. For example, `nested/report.xlsx` becomes `nested/report_en.xlsx`. Non-workbook files are skipped
+in the translated download.
+
+The summary panel shows the upload type, workbook count for zip archives, selected model, languages, estimated tokens,
+and estimated cost. After a successful translation, it also shows actual OpenAI input tokens, output tokens, and cost.
+Zip translations show both overall archive progress and current workbook progress.
+
+The UI rejects unsupported file types, invalid zip files, unsafe zip member paths, and zip archives that do not contain
+any `.xlsx` workbooks.
 
 ---
 
-Happy translating! :rocket:
+## Running Tests
+
+The integration suite uses real OpenAI calls, and the UI flow tests use Playwright with Chromium.
+
+```bash
+(.venv) $ python -m playwright install chromium
+(.venv) $ python -m unittest
+(.venv) $ pyright
+```
 
 ## Requirements
-- Python 3.8+
+
+- Python 3.11+
 - Set `OPENAI_API_KEY` in your environment
