@@ -48,7 +48,7 @@ uv run streamlit run src/app/streamlit_app.py
 
 - The UI depends on `OPENAI_API_KEY` at runtime.
 - The local `.env` file contains deployment connection settings for the remote LAN host:
-  - `DEPLOY_HOST_IP`
+  - `DEPLOY_HOST_NAME` or `DEPLOY_HOST_IP`
   - `DEPLOY_HOST_USER`
   - `DEPLOY_HOST_PWD`
   - `OPENAI_API_KEY`
@@ -207,7 +207,8 @@ The local `.env` deployment variables should be used only by local deployment to
 
 | Variable | Purpose | Secret Handling |
 | --- | --- | --- |
-| `DEPLOY_HOST_IP` | SSH target and LAN URL host | Not a secret, but avoid hardcoding in docs. |
+| `DEPLOY_HOST_NAME` | Preferred SSH target and LAN URL host | Not a secret, but avoid hardcoding in docs. |
+| `DEPLOY_HOST_IP` | Fallback SSH target and LAN URL host when `DEPLOY_HOST_NAME` is unset | Not a secret, but avoid hardcoding in docs. |
 | `DEPLOY_HOST_USER` | SSH username | Treat as deployment configuration. |
 | `DEPLOY_HOST_PWD` | SSH password when key-based auth is not available | Secret; do not echo, pass on the command line, commit, or copy into the container. |
 | `OPENAI_API_KEY` | Runtime API key for the Streamlit service | Secret; copy only into the remote runtime env file with restricted permissions. |

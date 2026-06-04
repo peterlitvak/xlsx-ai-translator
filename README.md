@@ -168,7 +168,7 @@ To deploy to the configured remote LAN Docker host, put these keys in the local 
 
 ```bash
 OPENAI_API_KEY=sk-...
-DEPLOY_HOST_IP=...
+DEPLOY_HOST_NAME=...
 DEPLOY_HOST_USER=...
 DEPLOY_HOST_PWD=...
 ```
@@ -181,9 +181,10 @@ $ ./scripts/deploy_docker_remote.sh
 
 The deploy script builds the image, saves it under `.local/`, copies it to the remote host over SSH, writes a remote
 runtime env file containing only `OPENAI_API_KEY`, loads the image, replaces the container, and checks the Streamlit
-health endpoint. If `DEPLOY_HOST_PWD` is set, the script uses `sshpass -e` when available, falls back to `expect` when
-available, and otherwise uses normal SSH key or interactive authentication. It also creates a host work directory,
-mounts it at `/work`, and starts the container with `--cpus 1 --memory 2g` by default.
+health endpoint. The script uses `DEPLOY_HOST_NAME` when it is set, otherwise it falls back to `DEPLOY_HOST_IP`. If
+`DEPLOY_HOST_PWD` is set, the script uses `sshpass -e` when available, falls back to `expect` when available, and
+otherwise uses normal SSH key or interactive authentication. It also creates a host work directory, mounts it at `/work`,
+and starts the container with `--cpus 1 --memory 2g` by default.
 
 Useful deployment overrides:
 

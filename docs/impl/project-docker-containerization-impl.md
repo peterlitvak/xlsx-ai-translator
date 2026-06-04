@@ -54,7 +54,8 @@ Required environment variables:
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `OPENAI_API_KEY` | Yes | Must be supplied at `docker run` runtime. Do not bake into the image. |
-| `DEPLOY_HOST_IP` | For remote deployment | SSH target and LAN URL host. Do not hardcode the value in docs. |
+| `DEPLOY_HOST_NAME` | For remote deployment | Preferred SSH target and LAN URL host. Do not hardcode the value in docs. |
+| `DEPLOY_HOST_IP` | For remote deployment | Fallback SSH target and LAN URL host when `DEPLOY_HOST_NAME` is unset. Do not hardcode the value in docs. |
 | `DEPLOY_HOST_USER` | For remote deployment | SSH username for the Docker host. |
 | `DEPLOY_HOST_PWD` | For remote deployment when key auth is unavailable | Secret. Use only locally, never in the container env file. |
 | `INSTALL_DOCKER_IF_MISSING` | Optional | Defaults to `false`; when `true`, attempts remote Docker installation and requires passwordless `sudo`. |

@@ -26,6 +26,7 @@ REMOTE_APP_DIR="${REMOTE_APP_DIR:-/tmp/xlsx-llm-translator}"
 REMOTE_ENV_FILE="$REMOTE_APP_DIR/.env"
 REMOTE_WORK_DIR="${REMOTE_WORK_DIR:-/tmp/xlsx-llm-translator/work}"
 CONTAINER_WORK_DIR="${CONTAINER_WORK_DIR:-/work}"
+DEPLOY_HOST_TARGET=""
 
 SSH_OPTIONS=(-o StrictHostKeyChecking=accept-new)
 
@@ -80,6 +81,16 @@ require_env() {
     [[ -n "${!name:-}" ]] || fail "Missing required environment variable: $name"
 }
 
+resolve_deploy_host_target() {
+    if [[ -n "${DEPLOY_HOST_NAME:-}" ]]; then
+        DEPLOY_HOST_TARGET="$DEPLOY_HOST_NAME"
+    elif [[ -n "${DEPLOY_HOST_IP:-}" ]]; then
+        DEPLOY_HOST_TARGET="$DEPLOY_HOST_IP"
+    else
+        fail "Missing required environment variable: DEPLOY_HOST_NAME or DEPLOY_HOST_IP"
+    fi
+}
+
 shell_quote() {
     printf "'%s'" "${1//\'/\'\\\'\'}"
 }
@@ -93,7 +104,7 @@ use_expect() {
 }
 
 remote_target() {
-    printf '%s@%s' "$DEPLOY_HOST_USER" "$DEPLOY_HOST_IP"
+    printf '%s@%s' "$DEPLOY_HOST_USER" "$DEPLOY_HOST_TARGET"
 }
 
 run_expect_password_command() {
@@ -242,7 +253,7 @@ publish_arg() {
 }
 
 probe_remote_health() {
-    local health_url="http://$DEPLOY_HOST_IP:$HOST_PORT/_stcore/health"
+    local health_url="http://$DEPLOY_HOST_TARGET:$HOST_PORT/_stcore/health"
 
     if command -v curl >/dev/null 2>&1; then
         curl -fsS "$health_url" >/dev/null
@@ -257,7 +268,7 @@ PY
 }
 
 check_remote_health() {
-    local health_url="http://$DEPLOY_HOST_IP:$HOST_PORT/_stcore/health"
+    local health_url="http://$DEPLOY_HOST_TARGET:$HOST_PORT/_stcore/health"
     local attempt=1
 
     log "Checking remote health endpoint: $health_url"
@@ -327,7 +338,7 @@ install_remote_docker_desktop_mac() {
 main() {
     load_dotenv
 
-    require_env "DEPLOY_HOST_IP"
+    resolve_deploy_host_target
     require_env "DEPLOY_HOST_USER"
     require_env "OPENAI_API_KEY"
     require_command "docker"
@@ -365,7 +376,7 @@ main() {
     run_ssh "docker load -i $quoted_archive && (docker rm -f $(shell_quote "$CONTAINER_NAME") >/dev/null 2>&1 || true) && docker run -d --name $(shell_quote "$CONTAINER_NAME") --restart unless-stopped --cpus $(shell_quote "$DOCKER_CPUS") --memory $(shell_quote "$DOCKER_MEMORY") --env-file $quoted_env_file --volume $quoted_volume --publish $(shell_quote "$publish") $(shell_quote "$IMAGE_REF") && rm -f $quoted_archive"
 
     check_remote_health
-    log "Deployment complete: http://$DEPLOY_HOST_IP:$HOST_PORT"
+    log "Deployment complete: http://$DEPLOY_HOST_TARGET:$HOST_PORT"
 }
 
 main "$@"
