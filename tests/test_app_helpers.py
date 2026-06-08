@@ -5,6 +5,7 @@ import zipfile
 from io import BytesIO
 from pathlib import Path
 from typing import ClassVar, Iterable, Optional
+from unittest.mock import patch
 
 import openpyxl
 
@@ -27,7 +28,10 @@ from services.translation_estimator import (
 )
 from services.download_artifacts import (
     DOWNLOAD_ARTIFACT_DIR_KEY,
+    TMPDIR_ENV,
+    TRANSLATION_WORK_DIR_ENV,
     cleanup_download_artifact,
+    ensure_translation_work_dirs,
     stage_download_artifact,
 )
 from services.translation_workflow import (
@@ -213,6 +217,30 @@ class TestZipHelperUnitTests(unittest.TestCase):
 
 
 class TestDownloadArtifactServices(unittest.TestCase):
+    def test_ensure_translation_work_dirs_creates_configured_dirs(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            work_dir = Path(temp_dir) / "work"
+            tmp_dir = work_dir / "tmp"
+            original_temp_dir = tempfile.tempdir
+            tempfile.tempdir = "/tmp"
+
+            try:
+                with patch.dict(
+                    os.environ,
+                    {
+                        TRANSLATION_WORK_DIR_ENV: str(work_dir),
+                        TMPDIR_ENV: str(tmp_dir),
+                    },
+                ):
+                    artifact_root = ensure_translation_work_dirs()
+
+                self.assertEqual(work_dir, artifact_root)
+                self.assertTrue(work_dir.is_dir())
+                self.assertTrue(tmp_dir.is_dir())
+                self.assertIsNone(tempfile.tempdir)
+            finally:
+                tempfile.tempdir = original_temp_dir
+
     def test_stage_download_artifact_writes_file_and_cleanup_removes_directory(
         self,
     ) -> None:

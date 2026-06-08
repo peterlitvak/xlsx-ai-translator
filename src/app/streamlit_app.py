@@ -18,6 +18,7 @@ from services.actual_usage_state import (
 )
 from services.download_artifacts import (
     cleanup_download_artifact,
+    ensure_translation_work_dirs,
     stage_download_artifact,
 )
 from services.translation_estimator import (
@@ -44,6 +45,7 @@ logger = logging.getLogger(__name__)
 LANGUAGE_OPTIONS = list(SupportedLanguage)
 MODEL_OPTIONS = list(TranslationModel)
 
+ensure_translation_work_dirs()
 
 st.set_page_config(page_title="XLSX LLM Translator", layout="wide")
 st.title("XLSX LLM Translator")
